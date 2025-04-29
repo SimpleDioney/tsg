@@ -1,0 +1,33 @@
+{
+  "name": "g3x",
+  "version": "1.0.0",
+  "description": "G3X Bot Discord",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "invite": "node src/generate-invite.js",
+    "sync-tray": "node src/syncTrayCustomers.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "g3x"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "cheerio": "^1.0.0",
+    "csvtojson": "^2.0.10",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3",
+    "papaparse": "^5.5.2",
+    "querystring": "^0.2.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
