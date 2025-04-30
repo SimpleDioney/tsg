@@ -854,35 +854,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Comando /registro
       else if (commandName === 'registro') {
-  // Verifica se o usuário já tem um email registrado
-  const emailExistente = db.getEmailByUserId(interaction.user.id);
+        // Verifica se o usuário já tem um email registrado
+        const emailExistente = db.getEmailByUserId(interaction.user.id);
 
-  if (emailExistente.success && emailExistente.data) {
-    const embed = criarEmbedInfoUsuario(emailExistente.data);
+        if (emailExistente.success && emailExistente.data) {
+          const embed = criarEmbedInfoUsuario(emailExistente.data);
 
-    const botaoDesvincular = new ButtonBuilder()
-      .setCustomId('desvincular_email')
-      .setLabel('Desvincular este email')
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji('🗑️');
+          const botaoDesvincular = new ButtonBuilder()
+            .setCustomId('desvincular_email')
+            .setLabel('Desvincular este email')
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji('🗑️');
 
-    const botaoAtualizar = new ButtonBuilder()
-      .setCustomId('atualizar_email')
-      .setLabel('Atualizar email')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('📝');
+          const botaoAtualizar = new ButtonBuilder()
+            .setCustomId('atualizar_email')
+            .setLabel('Atualizar email')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('📝');
 
-    const row = new ActionRowBuilder().addComponents(botaoDesvincular, botaoAtualizar);
+          const row = new ActionRowBuilder().addComponents(botaoDesvincular, botaoAtualizar);
 
-    await interaction.reply({
-      embeds: [embed],
-      components: [row],
-      ephemeral: true
-    });
-    return;
-  }
+          await interaction.reply({
+            embeds: [embed],
+            components: [row],
+            ephemeral: true
+          });
+          return;
+        }
 
-        
         try {
           // Cria o modal para coleta de e-mail
           const modal = criarModalEmail();
@@ -959,19 +958,55 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const resultado = db.getEmailByUserId(interaction.user.id);
       
         if (resultado.success && resultado.data) {
-          const emailCliente = await sheetSync.buscarClientePorEmail(resultado.data.email);
+          await interaction.deferReply({ ephemeral: true });
           
-          const embed = new EmbedBuilder()
-            .setColor(0x9B59B6)
-            .setTitle('📧 Suas informações registradas')
-            .addFields(
-              { name: 'E-mail', value: `\`${resultado.data.email}\`` },
-              { name: 'Plano', value: emailCliente?.nome_produto ? `\`${emailCliente.nome_produto}\`` : 'Nenhum plano encontrado' }
-            )
-            .setFooter({ text: 'Use /desvincular para remover seu registro.' })
-            .setTimestamp();
-      
-          await interaction.reply({ embeds: [embed], ephemeral: true });
+          try {
+            // Busca todas as compras do email
+            const duplicatas = await sheetSync.buscarDuplicatasEmail(resultado.data.email);
+            console.log(`[DEBUG] Compras encontradas:`, duplicatas);
+            
+            const embed = new EmbedBuilder()
+              .setColor(0x9B59B6)
+              .setTitle('📧 Suas informações registradas')
+              .addFields(
+                { name: 'Email', value: `\`${resultado.data.email}\`` }
+              );
+
+            if (duplicatas && duplicatas.length > 0) {
+              // Adiciona um campo para cada plano comprado
+              embed.addFields({
+                name: '📦 Seus Planos',
+                value: duplicatas.map(d => 
+                  `\`${d.nome_produto}\` (R$ ${d.preco})`
+                ).join('\n'),
+                inline: false
+              });
+
+              // Destaca o plano ativo (o de maior valor)
+              const planoAtivo = duplicatas[0]; // Já está ordenado por preço DESC
+              embed.addFields({
+                name: '🌟 Plano Ativo',
+                value: `\`${planoAtivo.nome_produto}\` (R$ ${planoAtivo.preco})`,
+                inline: false
+              });
+            } else {
+              embed.addFields({ 
+                name: 'Plano', 
+                value: 'Nenhum plano encontrado' 
+              });
+            }
+
+            embed.setFooter({ text: 'Use /desvincular para remover seu registro.' })
+                 .setTimestamp();
+
+            await interaction.editReply({ embeds: [embed], ephemeral: true });
+          } catch (error) {
+            console.error('Erro ao buscar informações do plano:', error);
+            await interaction.editReply({
+              content: '❌ Ocorreu um erro ao buscar as informações do seu plano. Por favor, tente novamente mais tarde.',
+              ephemeral: true
+            });
+          }
         } else {
           await interaction.reply({
             content: '❌ Nenhum e-mail registrado.',
@@ -1322,7 +1357,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             { 
               name: '1️⃣ Comando de Registro', 
               value: 'Use o comando `/registro` para iniciar o processo de registro. Um formulário será aberto para você digitar seu email.', 
-              inline: false 
+                inline: false
             },
             { 
               name: '2️⃣ Validação do Email', 
@@ -1446,38 +1481,40 @@ client.on(Events.InteractionCreate, async (interaction) => {
     else if (interaction.type === InteractionType.ModalSubmit) {
       if (interaction.customId.startsWith('email-modal')) {
         try {
+          // Primeiro, adiar a resposta para evitar o timeout
+          await interaction.deferReply({ ephemeral: true });
+
           const email = interaction.fields.getTextInputValue('email-input').trim();
-    
+
           // Validação do email
           if (!validarEmail(email)) {
             console.log(`Email inválido recebido: ${email} de ${interaction.user.tag}`);
-    
             const embedErro = criarEmbedErro(email);
-            return await interaction.reply({ embeds: [embedErro], ephemeral: true });
+            return await interaction.editReply({ embeds: [embedErro] });
           }
-    
+
           // Verifica se o email já está registrado no sistema (banco local Discord)
           const emailVerificado = db.isEmailRegistered(email);
-    
+
           if (emailVerificado.exists) {
             if (emailVerificado.data.user_id === interaction.user.id) {
               const embed = criarEmbedInfoUsuario(emailVerificado.data);
-              return await interaction.reply({ embeds: [embed], ephemeral: true });
+              return await interaction.editReply({ embeds: [embed] });
             }
-    
+
             const dataFormatada = formatarData(emailVerificado.data.registered_at);
             const embedErroEmailJaRegistrado = criarEmbedErroEmailJaRegistrado(
               email,
               emailVerificado.data.user_tag,
               dataFormatada
             );
-    
-            return await interaction.reply({ embeds: [embedErroEmailJaRegistrado], ephemeral: true });
+
+            return await interaction.editReply({ embeds: [embedErroEmailJaRegistrado] });
           }
-    
-          // Agora busca no banco da planilha
+
+          // Busca o cliente na planilha
           const cliente = await sheetSync.buscarClientePorEmail(email);
-    
+
           if (!cliente) {
             const embedNaoEncontrado = new EmbedBuilder()
               .setColor(0xFF0000)
@@ -1485,16 +1522,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
               .setDescription('**O email informado não foi encontrado em nossa base de dados.**')
               .setFooter({ text: 'Verifique se digitou corretamente ou aguarde atualização do sistema.' })
               .setTimestamp();
-    
-            return await interaction.reply({ embeds: [embedNaoEncontrado], ephemeral: true });
+
+            return await interaction.editReply({ embeds: [embedNaoEncontrado] });
           }
-    
+
           // Se chegou aqui, email é válido e está na planilha
           // Se for atualização (email-modal-update), desvincula antes
           if (interaction.customId === 'email-modal-update') {
             db.unregisterEmail(interaction.user.id);
           }
-    
+
           // Registra email no banco
           const resultado = db.registerEmail(
             email,
@@ -1502,64 +1539,109 @@ client.on(Events.InteractionCreate, async (interaction) => {
             interaction.user.tag,
             interaction.guild ? interaction.guild.id : null
           );
-    
+
           if (resultado.success) {
             console.log(`E-mail registrado com sucesso: ${email} por ${interaction.user.tag}`);
-    
-            // Busca o cliente pelo email
-            const cliente = await sheetSync.buscarClientePorEmail(email);
-            if (!cliente) {
-              console.error('Cliente não encontrado para o email:', email);
-            } else {
-              // Vincula o usuário ao cliente
-              const linkResult = db.linkUserToCustomer(interaction.user.id, cliente.id);
-              if (!linkResult.success) {
-                console.error('Erro ao vincular usuário ao cliente:', linkResult.error);
-              } else {
-                console.log(`Usuário ${interaction.user.tag} vinculado ao cliente ${cliente.id}`);
+
+            // Busca o plano com maior preço entre as duplicatas
+            const planoMaiorPreco = await sheetSync.obterPlanoMaiorPreco(email);
+            console.log(`[DEBUG] Plano com maior preço:`, planoMaiorPreco);
+
+            if (planoMaiorPreco) {
+              try {
+                // Busca todas as compras do email para listar
+                const duplicatas = await sheetSync.buscarDuplicatasEmail(email);
+                console.log(`[DEBUG] Todas as compras encontradas:`, duplicatas);
+
+                // Vincula o usuário ao cliente usando o código do cliente
+                const linkResult = db.linkUserToCustomer(interaction.user.id, cliente.codigo_cliente);
+                if (!linkResult.success) {
+                  console.error('Erro ao vincular usuário ao cliente:', linkResult.error);
+                } else {
+                  console.log(`Usuário ${interaction.user.tag} vinculado ao cliente ${cliente.codigo_cliente}`);
+                }
+
+                console.log(`[DEBUG] Plano original com maior preço: ${planoMaiorPreco.nome_produto} (R$ ${planoMaiorPreco.preco})`);
+                
+                // Normaliza o nome do plano (remove apenas o tamanho)
+                const nomePlanoExibicao = planoMaiorPreco.nome_produto.replace(/\s*-\s*Tamanho.*$/i, '').trim();
+                console.log(`[DEBUG] Nome do plano para exibição: ${nomePlanoExibicao}`);
+                
+                const nomePlanoNormalizado = await sheetSync.getNormalizedPlanName(planoMaiorPreco.nome_produto);
+                console.log(`[DEBUG] Plano normalizado para cargo: ${nomePlanoNormalizado}`);
+                
+                const planoInfo = await customerDb.getPlanByName(nomePlanoNormalizado);
+                console.log(`[DEBUG] Informações do plano:`, planoInfo);
+
+                const embed = new EmbedBuilder()
+                  .setColor(0x00FF00)
+                  .setTitle('✅ Registro Concluído')
+                  .addFields(
+                    { name: '📧 Email', value: `\`${email}\`` },
+                    { name: '📦 Plano', value: `\`${nomePlanoExibicao}\` (R$ ${planoMaiorPreco.preco})` }
+                  );
+
+                if (duplicatas && duplicatas.length > 1) {
+                  // Adiciona todos os planos comprados
+                  embed.addFields({
+                    name: '📋 Todos os Planos',
+                    value: duplicatas.map(d => 
+                      `\`${d.nome_produto.replace(/\s*-\s*Tamanho.*$/i, '').trim()}\` (R$ ${d.preco})`
+                    ).join('\n'),
+                    inline: false
+                  });
+                }
+
+                if (planoInfo.success && planoInfo.data?.discord_role_id) {
+                  const member = await interaction.guild.members.fetch(interaction.user.id);
+                  
+                  // Remove cargos antigos primeiro
+                  const planosResult = customerDb.getAllPlans();
+                  if (planosResult.success) {
+                    for (const plano of planosResult.data) {
+                      if (plano.discord_role_id) {
+                        console.log(`[DEBUG] Removendo cargo antigo ${plano.discord_role_id}`);
+                        await member.roles.remove(plano.discord_role_id).catch(console.error);
+                      }
+                    }
+                  }
+
+                  // Adiciona o novo cargo
+                  console.log(`[DEBUG] Adicionando novo cargo ${planoInfo.data.discord_role_id}`);
+                  await member.roles.add(planoInfo.data.discord_role_id);
+                  console.log(`[SUCESSO] Cargo ${planoInfo.data.discord_role_id} atribuído para ${interaction.user.tag}`);
+
+                  embed.addFields({
+                    name: '🏷️ Cargo',
+                    value: 'Seu cargo foi atualizado de acordo com seu plano!'
+                  });
+                } else {
+                  console.warn('[AVISO] Plano não encontrado ou sem cargo configurado:', nomePlanoNormalizado);
+                  embed.addFields({
+                    name: '⚠️ Cargo',
+                    value: 'Seu plano não tem um cargo configurado. Por favor, contate um administrador.'
+                  });
+                }
+
+                return await interaction.editReply({ embeds: [embed] });
+              } catch (error) {
+                console.error('[ERRO] Erro ao processar cargo:', error);
+                const embedErro = new EmbedBuilder()
+                  .setColor(0xFF0000)
+                  .setTitle('⚠️ Erro no Sistema')
+                  .setDescription('**Ocorreu um erro ao processar seu registro.**')
+                  .addFields(
+                    { name: '📧 Email', value: `\`${email}\`` },
+                    { name: '⚠️ Erro', value: 'Ocorreu um erro ao configurar seu cargo. Por favor, contate um administrador.' }
+                  )
+                  .setFooter({ text: 'O email foi registrado, mas houve um problema com o cargo.' })
+                  .setTimestamp();
+
+                return await interaction.editReply({ embeds: [embedErro] });
               }
             }
-    
-            const embed = new EmbedBuilder()
-              .setColor(0x00FF00)
-              .setTitle('✅ Registro Concluído')
-              .addFields(
-                { name: '📧 E-mail', value: `\`${email}\`` },
-                { name: '🏷️ Plano', value: cliente?.nome_produto ? `\`${cliente.nome_produto}\`` : 'Não encontrado' }
-              )
-              .setFooter({ text: 'Obrigado por se registrar!' })
-              .setTimestamp();
-
-              // Depois de registrar o email com sucesso
-if (cliente?.nome_produto) {
-  const nomePlanoNormalizado = await sheetSync.getNormalizedPlanName(cliente.nome_produto);
-const planoInfo = await customerDb.getPlanByName(nomePlanoNormalizado);
-
-
-  if (planoInfo.success && planoInfo.data?.discord_role_id) {
-    try {
-      const guild = interaction.guild;
-      const member = await guild.members.fetch(interaction.user.id);
-
-      await member.roles.add(planoInfo.data.discord_role_id);
-
-      console.log(`Cargo ${planoInfo.data.discord_role_id} atribuído para ${interaction.user.tag}`);
-    } catch (error) {
-      console.error('Erro ao atribuir cargo:', error);
-    }
-  } else {
-    console.warn('Plano encontrado, mas sem cargo configurado.');
-  }
-}
-
-
-    
-            return await interaction.reply({ embeds: [embed], ephemeral: true });
-
-            
           } else {
             console.error('Erro ao registrar email:', resultado.error);
-    
             const embedErroProcessamento = new EmbedBuilder()
               .setColor(0xFF0000)
               .setTitle('⚠️ Erro no Registro')
@@ -1569,26 +1651,23 @@ const planoInfo = await customerDb.getPlanByName(nomePlanoNormalizado);
               )
               .setFooter({ text: 'Se o problema persistir, contate o administrador.' })
               .setTimestamp();
-    
-            return await interaction.reply({ embeds: [embedErroProcessamento], ephemeral: true });
+
+            return await interaction.editReply({ embeds: [embedErroProcessamento] });
           }
         } catch (error) {
           console.error('Erro ao processar o modal de registro:', error);
-    
           const embedErroSistema = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('⚠️ Erro no Sistema')
             .setDescription('**Ocorreu um erro ao processar seu registro.**')
             .setFooter({ text: 'Tente novamente mais tarde.' })
             .setTimestamp();
-    
+
           if (!interaction.replied) {
-            return await interaction.reply({ embeds: [embedErroSistema], ephemeral: true });
-          } else {
-            return await interaction.editReply({ embeds: [embedErroSistema], ephemeral: true });
+            return await interaction.editReply({ embeds: [embedErroSistema] });
           }
         }
-      }    
+      }
     }
   } catch (error) {
     console.error('Erro ao processar interação:', error);
@@ -1815,4 +1894,37 @@ function temPermissaoElevada(member) {
       role.name.toLowerCase().includes(cargo.toLowerCase())
     )
   );
+}
+
+// Função para atualizar cargo do usuário com base no plano
+async function atualizarCargoUsuario(member, planoNome) {
+  try {
+    // Busca todos os planos disponíveis
+    const planosResult = customerDb.getAllPlans();
+    if (!planosResult.success) {
+      console.error('Erro ao buscar planos:', planosResult.error);
+      return false;
+    }
+
+    const planos = planosResult.data;
+    
+    // Remove todos os cargos de plano existentes
+    for (const plano of planos) {
+      if (plano.discord_role_id) {
+        await member.roles.remove(plano.discord_role_id).catch(console.error);
+      }
+    }
+
+    // Encontra o plano correspondente e adiciona o cargo
+    const planoCorrespondente = planos.find(p => p.name.toLowerCase() === planoNome.toLowerCase());
+    if (planoCorrespondente && planoCorrespondente.discord_role_id) {
+      await member.roles.add(planoCorrespondente.discord_role_id);
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Erro ao atualizar cargo:', error);
+    return false;
+  }
 }

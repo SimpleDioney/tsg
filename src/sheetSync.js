@@ -255,6 +255,56 @@ function getNormalizedPlanName(originalName) {
   });
 }
 
+// Função para buscar duplicatas de email e seus preços
+function buscarDuplicatasEmail(email) {
+  return new Promise((resolve, reject) => {
+    console.log(`[DEBUG] Buscando duplicatas para o email: ${email}`);
+    
+    const query = `
+      SELECT 
+        email_cliente,
+        nome_produto,
+        preco,
+        CAST(REPLACE(REPLACE(REPLACE(preco, 'R$', ''), '.', ''), ',', '.') AS DECIMAL(10,2)) as preco_decimal
+      FROM customers 
+      WHERE LOWER(TRIM(email_cliente)) = LOWER(TRIM(?))
+      ORDER BY preco_decimal DESC
+    `;
+
+    console.log(`[DEBUG] Query SQL:`, query);
+
+    db.all(query, [email], (err, rows) => {
+      if (err) {
+        console.error('Erro ao buscar duplicatas:', err);
+        reject(err);
+      } else {
+        console.log(`[DEBUG] Duplicatas encontradas:`, rows);
+        resolve(rows);
+      }
+    });
+  });
+}
+
+// Função para obter o plano com maior preço
+async function obterPlanoMaiorPreco(email) {
+  try {
+    const duplicatas = await buscarDuplicatasEmail(email);
+    if (duplicatas.length === 0) {
+      return null;
+    }
+    
+    // Retorna o primeiro resultado já que a query ordena por preço DESC
+    return {
+      nome_produto: duplicatas[0].nome_produto,
+      preco: duplicatas[0].preco_decimal,
+      total_duplicatas: duplicatas.length
+    };
+  } catch (error) {
+    console.error('Erro ao obter plano com maior preço:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   initDatabase,
   iniciarAtualizacaoAutomatica,
@@ -262,5 +312,7 @@ module.exports = {
   getPlanosUnicos,
   getNormalizedPlans,
   getNormalizedPlanName,
-  updateNormalizedPlansCache
+  updateNormalizedPlansCache,
+  buscarDuplicatasEmail,
+  obterPlanoMaiorPreco
 };
