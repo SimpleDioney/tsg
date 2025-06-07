@@ -180,12 +180,12 @@ function criarEmbedErroDesvincular() {
 
 // Função para criar embed de informações do usuário
 function criarEmbedInfoUsuario(emailData) {
-  if (!emailData || !emailData.data) {
+  if (!emailData) {
     return criarEmbedErroDesvincular();
   }
 
   // Para timestamp do SQLite (armazenado em segundos)
-  let timestamp = emailData.data.registered_at;
+  let timestamp = emailData.registered_at;
   
   // Garantir que estamos trabalhando com segundos para o Discord
   if (timestamp > 10000000000) { // Se for em milissegundos
@@ -198,12 +198,12 @@ function criarEmbedInfoUsuario(emailData) {
   let planoInfo = null;
   
   // Verifica se existe uma vinculação para este usuário
-  const vinculacao = db.getUserLink(emailData.data.user_id);
+  const vinculacao = db.getUserLink(emailData.user_id);
   if (vinculacao.success) {
     clienteId = vinculacao.data.customer_id;
     
     // Busca os dados do cliente
-    const cliente = customerDb.getCustomerByEmail(emailData.data.email);
+    const cliente = customerDb.getCustomerByEmail(emailData.email);
     if (cliente.success) {
       clienteInfo = cliente.data.Customer;
       planoInfo = cliente.data.Customer.Plan;
@@ -216,9 +216,9 @@ function criarEmbedInfoUsuario(emailData) {
     .setTitle('ℹ️ Informações de Registro')
     .setDescription(`**Detalhes do seu registro atual:**`)
     .addFields(
-      { name: '📧 E-mail', value: `\`${emailData.data.email}\``, inline: true },
+      { name: '📧 E-mail', value: `\`${emailData.email}\``, inline: true },
       { name: '🕒 Data de Registro', value: `<t:${timestamp}:F>`, inline: false },
-      { name: '👤 ID do Usuário', value: `\`${emailData.data.user_id}\``, inline: false }
+      { name: '👤 ID do Usuário', value: `\`${emailData.user_id}\``, inline: false }
     );
   
   // Adiciona informações do cliente se disponíveis
@@ -971,12 +971,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             const duplicatas = await sheetSync.buscarDuplicatasEmail(resultado.data.email);
             console.log(`[DEBUG] Compras encontradas:`, duplicatas);
             
-            const embed = new EmbedBuilder()
-              .setColor(0x9B59B6)
-              .setTitle('📧 Suas informações registradas')
-              .addFields(
-                { name: 'Email', value: `\`${resultado.data.email}\`` }
-              );
+            const embed = criarEmbedInfoUsuario(resultado.data);
 
             if (duplicatas && duplicatas.length > 0) {
               // Adiciona um campo para cada plano comprado
@@ -995,27 +990,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 value: `\`${planoAtivo.nome_produto}\` (R$ ${planoAtivo.preco})`,
                 inline: false
               });
-            } else {
-              embed.addFields({ 
-                name: 'Plano', 
-                value: 'Nenhum plano encontrado' 
-              });
             }
-
-            embed.setFooter({ text: 'Use /desvincular para remover seu registro.' })
-                 .setTimestamp();
 
             await interaction.editReply({ embeds: [embed], ephemeral: true });
           } catch (error) {
-            console.error('Erro ao buscar informações do plano:', error);
+            console.error('Erro ao buscar informações do cliente:', error);
             await interaction.editReply({
-              content: '❌ Ocorreu um erro ao buscar as informações do seu plano. Por favor, tente novamente mais tarde.',
+              content: '❌ **Ocorreu um erro ao buscar suas informações.** Por favor, tente novamente mais tarde.',
               ephemeral: true
             });
           }
         } else {
           await interaction.reply({
-            content: '❌ Nenhum e-mail registrado.',
+            embeds: [criarEmbedErroSemEmail()],
             ephemeral: true
           });
         }
@@ -1346,10 +1333,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       // Comando /tutorial
       else if (commandName === 'tutorial') {
-        await interaction.reply({
-          embeds: [criarEmbedTutorial()],
-          components: [criarBotoesTutorial()]
-        });
+        const embed = criarEmbedTutorial();
+        const botoes = criarBotoesTutorial();
+        await interaction.reply({ embeds: [embed], components: [botoes] });
       }
 
       // Comando /restringir
@@ -1360,7 +1346,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!devRole) {
           return interaction.reply({
             content: '❌ Você precisa ter o cargo Dev para usar este comando.',
-            ephemeral: true
+            flags: [4096]
           });
         }
 
@@ -1371,12 +1357,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
             canaisRestritos.delete(channelId);
             await interaction.reply({
               content: '✅ Restrição de links removida deste canal.',
-              flags: [4096] // Ephemeral flag
+              flags: [4096]
             });
           } else {
             await interaction.reply({
               content: '❌ Erro ao remover restrição do canal.',
-              flags: [4096] // Ephemeral flag
+              flags: [4096]
             });
           }
         } else {
@@ -1385,12 +1371,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
             canaisRestritos.add(channelId);
             await interaction.reply({
               content: '✅ Links agora são restritos neste canal.',
-              flags: [4096] // Ephemeral flag
+              flags: [4096]
             });
           } else {
             await interaction.reply({
               content: '❌ Erro ao adicionar restrição ao canal.',
-              flags: [4096] // Ephemeral flag
+              flags: [4096]
             });
           }
         }
@@ -1507,12 +1493,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!emailData.success || !emailData.data) {
           return interaction.reply({
             embeds: [criarEmbedErroSemEmail()],
-            flags: [4096] // Ephemeral flag
+            flags: [4096]
           });
         }
+        const embed = criarEmbedInfoUsuario(emailData.data);
         await interaction.reply({
-          embeds: [criarEmbedInfoUsuario(emailData.data)],
-          flags: [4096] // Ephemeral flag
+          embeds: [embed],
+          flags: [4096]
         });
       }
       else if (interaction.customId === 'comando_desvincular') {
@@ -1520,19 +1507,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!emailData.success || !emailData.data) {
           return interaction.reply({
             embeds: [criarEmbedErroDesvincular()],
-            flags: [4096] // Ephemeral flag
+            flags: [4096]
           });
         }
         const result = await db.unregisterEmail(interaction.user.id);
         if (!result.success) {
           return interaction.reply({
             embeds: [criarEmbedErroDesvincular()],
-            flags: [4096] // Ephemeral flag
+            flags: [4096]
           });
         }
         await interaction.reply({
           embeds: [criarEmbedDesvinculacao(emailData.data.email)],
-          flags: [4096] // Ephemeral flag
+          flags: [4096]
         });
       }
     }
@@ -1542,7 +1529,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.customId.startsWith('email-modal')) {
         try {
           // Primeiro, adiar a resposta para evitar o timeout
-          await interaction.deferReply({ ephemeral: true });
+          await interaction.deferReply({ flags: [4096] });
 
           const email = interaction.fields.getTextInputValue('email-input').trim();
 
