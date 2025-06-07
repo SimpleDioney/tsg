@@ -1605,97 +1605,104 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return await interaction.editReply({ embeds: [embedErroProcessamento], ephemeral: true });
           }
 
-          if (resultado.success) {
-            try {
-              // Busca todas as compras do email
-              const duplicatas = await sheetSync.buscarDuplicatasEmail(email);
-              console.log(`[DEBUG] Compras encontradas:`, duplicatas);
+          try {
+            // Busca todas as compras do email
+            console.log(`[DEBUG] Iniciando busca de compras para o email: ${email}`);
+            const duplicatas = await sheetSync.buscarDuplicatasEmail(email);
+            console.log(`[DEBUG] Compras encontradas:`, duplicatas);
 
-              if (duplicatas && duplicatas.length > 0) {
-                // Ordena por preço (maior primeiro)
-                duplicatas.sort((a, b) => b.preco - a.preco);
-                
-                // Pega o plano de maior valor
-                const planoMaiorPreco = duplicatas[0];
-                
-                // Remove o sufixo "- Tamanho X" do nome do produto
-                const nomePlanoExibicao = planoMaiorPreco.nome_produto.replace(/\s*-\s*Tamanho.*$/i, '').trim();
+            if (duplicatas && duplicatas.length > 0) {
+              // Ordena por preço (maior primeiro)
+              duplicatas.sort((a, b) => b.preco_decimal - a.preco_decimal);
+              
+              // Pega o plano de maior valor
+              const planoMaiorPreco = duplicatas[0];
+              console.log(`[DEBUG] Plano de maior valor:`, planoMaiorPreco);
+              
+              // Remove o sufixo "- Tamanho X" do nome do produto
+              const nomePlanoExibicao = planoMaiorPreco.nome_produto.replace(/\s*-\s*Tamanho.*$/i, '').trim();
+              console.log(`[DEBUG] Nome do plano para exibição:`, nomePlanoExibicao);
 
-                const embed = new EmbedBuilder()
-                  .setColor(0x00FF00)
-                  .setTitle('✅ Registro Concluído')
-                  .addFields(
-                    { name: '📧 Email', value: `\`${email}\`` },
-                    { name: '📦 Plano', value: `\`${nomePlanoExibicao}\` (R$ ${planoMaiorPreco.preco})` }
-                  );
+              const embed = new EmbedBuilder()
+                .setColor(0x00FF00)
+                .setTitle('✅ Registro Concluído')
+                .addFields(
+                  { name: '📧 Email', value: `\`${email}\`` },
+                  { name: '📦 Plano', value: `\`${nomePlanoExibicao}\` (R$ ${planoMaiorPreco.preco})` }
+                );
 
-                if (duplicatas && duplicatas.length > 1) {
-                  // Adiciona todos os planos comprados
-                  embed.addFields({
-                    name: '📋 Todos os Planos',
-                    value: duplicatas.map(d => 
-                      `\`${d.nome_produto.replace(/\s*-\s*Tamanho.*$/i, '').trim()}\` (R$ ${d.preco})`
-                    ).join('\n'),
-                    inline: false
-                  });
-                }
+              if (duplicatas.length > 1) {
+                // Adiciona todos os planos comprados
+                embed.addFields({
+                  name: '📋 Todos os Planos',
+                  value: duplicatas.map(d => 
+                    `\`${d.nome_produto.replace(/\s*-\s*Tamanho.*$/i, '').trim()}\` (R$ ${d.preco})`
+                  ).join('\n'),
+                  inline: false
+                });
+              }
 
-                // Tenta aplicar o cargo correspondente ao plano
-                if (interaction.guild) {
-                  try {
-                    const member = await interaction.guild.members.fetch(interaction.user.id);
-                    const cargoAplicado = await aplicarCargoPlano(member, planoMaiorPreco);
-                    
-                    if (cargoAplicado) {
-                      embed.addFields({
-                        name: '🏷️ Cargo',
-                        value: 'O cargo correspondente ao seu plano foi aplicado com sucesso!',
-                        inline: false
-                      });
-                    }
-                  } catch (error) {
-                    console.error('[ERRO] Erro ao processar cargo:', error);
-                    const embedErro = new EmbedBuilder()
-                      .setColor(0xFF0000)
-                      .setTitle('⚠️ Erro no Sistema')
-                      .setDescription('**Ocorreu um erro ao processar seu registro.**')
-                      .addFields(
-                        { name: '📧 Email', value: `\`${email}\`` },
-                        { name: '⚠️ Erro', value: 'Ocorreu um erro ao configurar seu cargo. Por favor, contate um administrador.' }
-                      )
-                      .setFooter({ text: 'O email foi registrado, mas houve um problema com o cargo.' })
-                      .setTimestamp();
-
-                    return await interaction.editReply({ embeds: [embedErro], ephemeral: true });
+              // Tenta aplicar o cargo correspondente ao plano
+              if (interaction.guild) {
+                try {
+                  console.log(`[DEBUG] Tentando aplicar cargo para o usuário ${interaction.user.tag}`);
+                  const member = await interaction.guild.members.fetch(interaction.user.id);
+                  const cargoAplicado = await aplicarCargoPlano(member, planoMaiorPreco);
+                  
+                  if (cargoAplicado) {
+                    console.log(`[DEBUG] Cargo aplicado com sucesso para ${interaction.user.tag}`);
+                    embed.addFields({
+                      name: '🏷️ Cargo',
+                      value: 'O cargo correspondente ao seu plano foi aplicado com sucesso!',
+                      inline: false
+                    });
+                  } else {
+                    console.log(`[DEBUG] Nenhum cargo foi aplicado para ${interaction.user.tag}`);
                   }
-                }
-              } else {
-                const embed = new EmbedBuilder()
-                  .setColor(0x00FF00)
-                  .setTitle('✅ Registro Concluído')
-                  .addFields(
-                    { name: '📧 Email', value: `\`${email}\`` },
-                    { name: '⚠️ Aviso', value: 'Nenhum plano encontrado para este email.' }
-                  );
+                } catch (error) {
+                  console.error('[ERRO] Erro ao processar cargo:', error);
+                  const embedErro = new EmbedBuilder()
+                    .setColor(0xFF0000)
+                    .setTitle('⚠️ Erro no Sistema')
+                    .setDescription('**Ocorreu um erro ao processar seu registro.**')
+                    .addFields(
+                      { name: '📧 Email', value: `\`${email}\`` },
+                      { name: '⚠️ Erro', value: 'Ocorreu um erro ao configurar seu cargo. Por favor, contate um administrador.' }
+                    )
+                    .setFooter({ text: 'O email foi registrado, mas houve um problema com o cargo.' })
+                    .setTimestamp();
 
-                return await interaction.editReply({ embeds: [embed], ephemeral: true });
+                  return await interaction.editReply({ embeds: [embedErro], ephemeral: true });
+                }
               }
 
               return await interaction.editReply({ embeds: [embed], ephemeral: true });
-            } catch (error) {
-              console.error('Erro ao registrar email:', resultado.error);
-              const embedErroProcessamento = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('⚠️ Erro no Registro')
-                .setDescription('**Ocorreu um erro ao registrar seu email.**')
+            } else {
+              console.log(`[DEBUG] Nenhum plano encontrado para o email ${email}`);
+              const embed = new EmbedBuilder()
+                .setColor(0x00FF00)
+                .setTitle('✅ Registro Concluído')
                 .addFields(
-                  { name: '🔄 Próximos Passos', value: 'Tente novamente mais tarde.' }
-                )
-                .setFooter({ text: 'Se o problema persistir, contate o administrador.' })
-                .setTimestamp();
+                  { name: '📧 Email', value: `\`${email}\`` },
+                  { name: '⚠️ Aviso', value: 'Nenhum plano encontrado para este email.' }
+                );
 
-              return await interaction.editReply({ embeds: [embedErroProcessamento], ephemeral: true });
+              return await interaction.editReply({ embeds: [embed], ephemeral: true });
             }
+          } catch (error) {
+            console.error('[ERRO] Erro ao processar compras:', error);
+            const embedErroProcessamento = new EmbedBuilder()
+              .setColor(0xFF0000)
+              .setTitle('⚠️ Erro no Registro')
+              .setDescription('**Ocorreu um erro ao processar seu registro.**')
+              .addFields(
+                { name: '📧 Email', value: `\`${email}\`` },
+                { name: '⚠️ Erro', value: 'Ocorreu um erro ao processar suas compras. Por favor, contate um administrador.' }
+              )
+              .setFooter({ text: 'O email foi registrado, mas houve um problema ao processar as compras.' })
+              .setTimestamp();
+
+            return await interaction.editReply({ embeds: [embedErroProcessamento], ephemeral: true });
           }
         } catch (error) {
           console.error('Erro ao processar o modal de registro:', error);
