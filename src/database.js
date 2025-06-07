@@ -101,6 +101,11 @@ function initDatabase() {
 // Registra um novo email
 function registerEmail(email, userId, userTag, guildId = null) {
   try {
+    // Validação dos parâmetros
+    if (!email || !userId || !userTag) {
+      return { success: false, error: 'PARAMETROS_INVALIDOS' };
+    }
+
     const stmt = db.prepare(`
       INSERT INTO emails (email, user_id, user_tag, guild_id)
       VALUES (?, ?, ?, ?)
@@ -113,8 +118,8 @@ function registerEmail(email, userId, userTag, guildId = null) {
     if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       return { success: false, error: 'EMAIL_ALREADY_EXISTS' };
     }
-    console.error('Erro ao registrar email:', error);
-    return { success: false, error: 'DATABASE_ERROR' };
+    console.error('Erro ao registrar email:', error.message);
+    return { success: false, error: error.message || 'DATABASE_ERROR' };
   }
 }
 

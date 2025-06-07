@@ -1587,6 +1587,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
             interaction.guild ? interaction.guild.id : null
           );
 
+          if (!resultado.success) {
+            console.error('Erro ao registrar email:', resultado.error);
+            const embedErroProcessamento = new EmbedBuilder()
+              .setColor(0xFF0000)
+              .setTitle('⚠️ Erro no Registro')
+              .setDescription('**Ocorreu um erro ao registrar seu email.**')
+              .addFields(
+                { name: '📧 Email', value: `\`${email}\`` },
+                { name: '⚠️ Erro', value: resultado.error === 'EMAIL_ALREADY_EXISTS' ? 
+                  'Este email já está registrado por outro usuário.' :
+                  'Ocorreu um erro ao processar seu registro. Por favor, tente novamente mais tarde.' }
+              )
+              .setFooter({ text: 'Se o problema persistir, contate o administrador.' })
+              .setTimestamp();
+
+            return await interaction.editReply({ embeds: [embedErroProcessamento], ephemeral: true });
+          }
+
           if (resultado.success) {
             try {
               // Busca todas as compras do email
