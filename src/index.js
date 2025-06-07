@@ -685,46 +685,72 @@ const client = new Client({
 // Array com os comandos slash
 const commands = [
   new SlashCommandBuilder()
-    .setName('registro')
-    .setDescription('Registra seu e-mail no sistema'),
+    .setName('ping')
+    .setDescription('Responde com Pong!'),
+  
   new SlashCommandBuilder()
-    .setName('meu-email')
-    .setDescription('Mostra o e-mail registrado em sua conta'),
+    .setName('convite')
+    .setDescription('Gera um link de convite para o servidor'),
+  
+  new SlashCommandBuilder()
+    .setName('registro')
+    .setDescription('Registra seu email no sistema'),
+  
   new SlashCommandBuilder()
     .setName('desvincular')
-    .setDescription('Remove seu e-mail do sistema'),
+    .setDescription('Remove seu email registrado'),
+  
+  new SlashCommandBuilder()
+    .setName('meu-email')
+    .setDescription('Mostra informações sobre seu email registrado'),
+  
   new SlashCommandBuilder()
     .setName('verificar-email')
-    .setDescription('Verifica se um e-mail está na base de clientes')
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-    .addStringOption(option => 
+    .setDescription('Verifica se um email está registrado no sistema')
+    .addStringOption(option =>
       option.setName('email')
-        .setDescription('O email que deseja verificar')
+        .setDescription('O email a ser verificado')
         .setRequired(true)),
+  
   new SlashCommandBuilder()
     .setName('config-plano')
-    .setDescription('Configura o cargo de um plano [ADMIN]')
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-    .addStringOption(option => 
+    .setDescription('Configura um plano para um cargo [ADMIN]')
+    .setDefaultMemberPermissions(0)
+    .addStringOption(option =>
       option.setName('plano_id')
-        .setDescription('Nome do plano') 
-        .setRequired(true)
-        .setAutocomplete(true)
-    )
-    .addRoleOption(option => 
+        .setDescription('ID do plano na Tray')
+        .setRequired(true))
+    .addRoleOption(option =>
       option.setName('cargo')
-        .setDescription('Cargo Discord a ser associado ao plano')
-        .setRequired(true)
-    ),
+        .setDescription('Cargo a ser vinculado ao plano')
+        .setRequired(true)),
+  
+  new SlashCommandBuilder()
+    .setName('diagnostico')
+    .setDescription('Mostra informações de diagnóstico do bot'),
+  
   new SlashCommandBuilder()
     .setName('verificar-permissoes')
-    .setDescription('Verifica se o bot tem permissões para gerenciar cargos [ADMIN]')
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+    .setDescription('Verifica as permissões do bot [ADMIN]')
+    .setDefaultMemberPermissions(0),
+  
+  new SlashCommandBuilder()
+    .setName('admin-vinculos')
+    .setDescription('Lista todos os vínculos de email registrados')
+    .setDefaultMemberPermissions(0),
+  
   new SlashCommandBuilder()
     .setName('tutorial')
-    .setDescription('Envia um tutorial de como se registrar [DEV]')
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .setDescription('Mostra um tutorial sobre como usar o bot'),
+  
+  new SlashCommandBuilder()
+    .setName('restringir')
+    .setDescription('Ativa/desativa a restrição de links no canal [DEV]')
+    .setDefaultMemberPermissions(0),
 ];
+
+// Adicionar uma coleção para armazenar os canais restritos
+const canaisRestritos = new Collection();
 
 // Evento executado quando o bot estiver pronto
 client.once(Events.ClientReady, async (c) => {
@@ -854,34 +880,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Comando /registro
       else if (commandName === 'registro') {
-        // Verifica se o usuário já tem um email registrado
-        const emailExistente = db.getEmailByUserId(interaction.user.id);
+  // Verifica se o usuário já tem um email registrado
+  const emailExistente = db.getEmailByUserId(interaction.user.id);
 
-        if (emailExistente.success && emailExistente.data) {
-          const embed = criarEmbedInfoUsuario(emailExistente.data);
+  if (emailExistente.success && emailExistente.data) {
+    const embed = criarEmbedInfoUsuario(emailExistente.data);
 
-          const botaoDesvincular = new ButtonBuilder()
-            .setCustomId('desvincular_email')
-            .setLabel('Desvincular este email')
-            .setStyle(ButtonStyle.Danger)
-            .setEmoji('🗑️');
+    const botaoDesvincular = new ButtonBuilder()
+      .setCustomId('desvincular_email')
+      .setLabel('Desvincular este email')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🗑️');
 
-          const botaoAtualizar = new ButtonBuilder()
-            .setCustomId('atualizar_email')
-            .setLabel('Atualizar email')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('📝');
+    const botaoAtualizar = new ButtonBuilder()
+      .setCustomId('atualizar_email')
+      .setLabel('Atualizar email')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('📝');
 
-          const row = new ActionRowBuilder().addComponents(botaoDesvincular, botaoAtualizar);
+    const row = new ActionRowBuilder().addComponents(botaoDesvincular, botaoAtualizar);
 
-          await interaction.reply({
-            embeds: [embed],
-            components: [row],
-            ephemeral: true
-          });
-          return;
-        }
+    await interaction.reply({
+      embeds: [embed],
+      components: [row],
+      ephemeral: true
+    });
+    return;
+  }
 
+        
         try {
           // Cria o modal para coleta de e-mail
           const modal = criarModalEmail();
@@ -957,59 +984,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
       else if (commandName === 'meu-email') {
         const resultado = db.getEmailByUserId(interaction.user.id);
       
-        if (resultado.success && resultado.data) {
-          await interaction.deferReply({ ephemeral: true });
-          
-          try {
-            // Busca todas as compras do email
-            const duplicatas = await sheetSync.buscarDuplicatasEmail(resultado.data.email);
-            console.log(`[DEBUG] Compras encontradas:`, duplicatas);
-            
-            const embed = new EmbedBuilder()
-              .setColor(0x9B59B6)
-              .setTitle('📧 Suas informações registradas')
-              .addFields(
-                { name: 'Email', value: `\`${resultado.data.email}\`` }
-              );
-
-            if (duplicatas && duplicatas.length > 0) {
-              // Adiciona um campo para cada plano comprado
-              embed.addFields({
-                name: '📦 Seus Planos',
-                value: duplicatas.map(d => 
-                  `\`${d.nome_produto}\` (R$ ${d.preco})`
-                ).join('\n'),
-                inline: false
-              });
-
-              // Destaca o plano ativo (o de maior valor)
-              const planoAtivo = duplicatas[0]; // Já está ordenado por preço DESC
-              embed.addFields({
-                name: '🌟 Plano Ativo',
-                value: `\`${planoAtivo.nome_produto}\` (R$ ${planoAtivo.preco})`,
-                inline: false
-              });
-            } else {
-              embed.addFields({ 
-                name: 'Plano', 
-                value: 'Nenhum plano encontrado' 
-              });
-            }
-
-            embed.setFooter({ text: 'Use /desvincular para remover seu registro.' })
-                 .setTimestamp();
-
-            await interaction.editReply({ embeds: [embed], ephemeral: true });
-          } catch (error) {
-            console.error('Erro ao buscar informações do plano:', error);
-            await interaction.editReply({
-              content: '❌ Ocorreu um erro ao buscar as informações do seu plano. Por favor, tente novamente mais tarde.',
-              ephemeral: true
-            });
-          }
-        } else {
+        if (!resultado.success || !resultado.data || !resultado.data.email) {
           await interaction.reply({
-            content: '❌ Nenhum e-mail registrado.',
+            content: 'Você ainda não tem um email registrado. Use /registrar para vincular seu email.',
+            ephemeral: true
+          });
+          return;
+        }
+
+        try {
+          const emailCliente = await sheetSync.buscarClientePorEmail(resultado.data.email);
+          
+          const embed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('📧 Suas informações registradas')
+            .addFields(
+              { name: 'E-mail', value: `\`${resultado.data.email}\`` },
+              { name: 'Plano', value: emailCliente?.nome_produto ? `\`${emailCliente.nome_produto}\`` : 'Nenhum plano encontrado' }
+            )
+            .setFooter({ text: 'Use /desvincular para remover seu registro.' });
+
+          await interaction.reply({
+            embeds: [embed],
+            ephemeral: true
+          });
+        } catch (error) {
+          console.error('Erro ao buscar informações do cliente:', error);
+          await interaction.reply({
+            content: 'Ocorreu um erro ao buscar suas informações. Por favor, tente novamente mais tarde.',
             ephemeral: true
           });
         }
@@ -1018,15 +1020,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Comando /verificar-email
       else if (commandName === 'verificar-email') {
-        // Verifica se o usuário tem permissões elevadas
-        if (!temPermissaoElevada(interaction.member)) {
-          await interaction.reply({
-            content: '❌ **Você não tem permissão para usar este comando.** Apenas administradores e cargos elevados podem usar este comando.',
-            ephemeral: true
-          });
-          return;
-        }
-
         const email = interaction.options.getString('email');
       
         if (!validarEmail(email)) {
@@ -1085,14 +1078,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Comando /config-plano
       else if (commandName === 'config-plano') {
-        // Verifica se o usuário tem permissões elevadas
-        if (!temPermissaoElevada(interaction.member)) {
-          await interaction.reply({
-            content: '❌ **Você não tem permissão para usar este comando.** Apenas administradores e cargos elevados podem usar este comando.',
-            ephemeral: true
-          });
-          return;
-        }
         try {
           console.log(`[DEBUG] Iniciando execução do comando /config-plano`);
           console.log(`[DEBUG] Servidor: ${interaction.guild.name} (ID: ${interaction.guild.id})`);
@@ -1249,14 +1234,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Comando /verificar-permissoes
       else if (commandName === 'verificar-permissoes') {
-        // Verifica se o usuário tem permissões elevadas
-        if (!temPermissaoElevada(interaction.member)) {
-          await interaction.reply({
-            content: '❌ **Você não tem permissão para usar este comando.** Apenas administradores e cargos elevados podem usar este comando.',
-            ephemeral: true
-          });
-          return;
-        }
+        // Este comando é restrito a administradores pela configuração de permissões
         
         try {
           // Obter todos os planos
@@ -1289,14 +1267,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Comando /admin-vinculos
       else if (commandName === 'admin-vinculos') {
-        // Verifica se o usuário tem permissões elevadas
-        if (!temPermissaoElevada(interaction.member)) {
-          await interaction.reply({
-            content: '❌ **Você não tem permissão para usar este comando.** Apenas administradores e cargos elevados podem usar este comando.',
-            ephemeral: true
-          });
-          return;
-        }
+        // Este comando é restrito a administradores pela configuração de permissões
         
         try {
           // Obtém todos os vínculos
@@ -1338,52 +1309,183 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
+      // Comando /diagnostico
+      else if (commandName === 'diagnostico') {
+        try {
+          console.log(`[DIAGNÓSTICO] Iniciando diagnóstico para o servidor ${interaction.guild.name} (ID: ${interaction.guild.id})`);
+          
+          // Verifica se o bot está no servidor
+          const botMember = await interaction.guild.members.fetchMe();
+          console.log(`[DIAGNÓSTICO] Bot está no servidor como: ${botMember.user.tag}`);
+          
+          // Verifica permissões do bot
+          const permissões = botMember.permissions;
+          console.log(`[DIAGNÓSTICO] Permissões do bot: ${permissões.toArray().join(', ')}`);
+          
+          // Verifica cargos do bot
+          const cargos = botMember.roles.cache.map(role => `${role.name} (${role.position})`);
+          console.log(`[DIAGNÓSTICO] Cargos do bot: ${cargos.join(', ')}`);
+          
+          // Verifica se os comandos estão registrados
+          const comandosRegistrados = await interaction.guild.commands.fetch();
+          console.log(`[DIAGNÓSTICO] Comandos registrados: ${comandosRegistrados.size}`);
+          
+          // Cria embed com as informações
+          const embed = new EmbedBuilder()
+            .setColor(0x3498DB)
+            .setTitle('🔍 Diagnóstico do Bot')
+            .setDescription(`Diagnóstico do bot no servidor ${interaction.guild.name}`)
+            .addFields(
+              { name: '🤖 Bot', value: `${botMember.user.tag}`, inline: true },
+              { name: '📊 Permissões', value: permissões.toArray().join(', '), inline: false },
+              { name: '👑 Cargos', value: cargos.join('\n'), inline: false },
+              { name: '📝 Comandos Registrados', value: `${comandosRegistrados.size} comandos`, inline: true }
+            )
+            .setTimestamp();
+          
+          await interaction.reply({ embeds: [embed], ephemeral: true });
+        } catch (error) {
+          console.error(`[ERRO] Erro ao executar diagnóstico no servidor ${interaction.guild.name}:`, error);
+          await interaction.reply({ 
+            content: '❌ Ocorreu um erro ao executar o diagnóstico. Verifique os logs para mais detalhes.',
+            ephemeral: true 
+          });
+        }
+      }
+
       // Comando /tutorial
       else if (commandName === 'tutorial') {
-        // Verifica se o usuário tem o cargo DEV
-        if (!interaction.member.roles.cache.some(role => role.name === 'Dev')) {
-          await interaction.reply({
-            content: '❌ **Você não tem permissão para usar este comando.** Apenas usuários com o cargo DEV podem usar este comando.',
-            ephemeral: true
-          });
-          return;
-        }
-
         const embed = new EmbedBuilder()
-          .setColor(0x3498DB) // Azul
-          .setTitle('📝 Tutorial de Registro')
-          .setDescription('**Como se registrar no servidor:**')
+          .setColor(0x0099FF)
+          .setTitle('📚 Tutorial do Bot')
+          .setDescription('Bem-vindo ao tutorial do bot! Aqui você aprenderá como usar todos os comandos disponíveis.')
           .addFields(
             { 
-              name: '1️⃣ Comando de Registro', 
-              value: 'Use o comando `/registro` para iniciar o processo de registro. Um formulário será aberto para você digitar seu email.', 
-                inline: false
-            },
-            { 
-              name: '2️⃣ Validação do Email', 
-              value: 'O email deve ser válido e estar cadastrado em nossa base de clientes. Se não estiver, você não poderá se registrar.', 
+              name: '📝 Tutorial de Registro', 
+              value: '**Como se registrar no servidor:**\n\n' +
+                     '1️⃣ **Comando de Registro**\n' +
+                     'Use o comando `/registro` para iniciar o processo de registro. Um formulário será aberto para você digitar seu email.\n\n' +
+                     '2️⃣ **Validação do Email**\n' +
+                     'O email deve ser válido e estar cadastrado em nossa base de clientes. Se não estiver, você não poderá se registrar.\n\n' +
+                     '3️⃣ **Vinculação Automática**\n' +
+                     'Após o registro, você será automaticamente vinculado ao seu cliente e receberá o cargo correspondente ao seu plano.\n\n' +
+                     '4️⃣ **Verificação**\n' +
+                     'Use o comando `/meu-email` para verificar seu email registrado e informações do seu plano.\n\n' +
+                     '5️⃣ **Desvinculação**\n' +
+                     'Se precisar desvincular seu email, use o comando `/desvincular`. Isso removerá seu cargo de plano.',
               inline: false 
             },
             { 
-              name: '3️⃣ Vinculação Automática', 
-              value: 'Após o registro, você será automaticamente vinculado ao seu cliente e receberá o cargo correspondente ao seu plano.', 
-              inline: false 
-            },
-            { 
-              name: '4️⃣ Verificação', 
-              value: 'Use o comando `/meu-email` para verificar seu email registrado e informações do seu plano.', 
-              inline: false 
-            },
-            { 
-              name: '5️⃣ Desvinculação', 
-              value: 'Se precisar desvincular seu email, use o comando `/desvincular`. Isso removerá seu cargo de plano.', 
+              name: '🔍 Comandos Disponíveis', 
+              value: '**Principais comandos do bot:**\n\n' +
+                     '📧 `/registro` - Registra seu email no sistema\n' +
+                     'ℹ️ `/meu-email` - Mostra informações do seu email registrado\n' +
+                     '🔍 `/verificar-email` - Verifica se um email está na base de dados\n' +
+                     '❌ `/desvincular` - Remove seu email registrado\n',
               inline: false 
             }
           )
           .setFooter({ text: 'Dúvidas? Contate um administrador.' })
           .setTimestamp();
 
-        await interaction.reply({ content: '@everyone', embeds: [embed] });
+        const row1 = new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId('registro_button')
+              .setLabel('Registrar Email')
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji('📧'),
+            new ButtonBuilder()
+              .setCustomId('meu_email_button')
+              .setLabel('Meu Email')
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji('ℹ️'),
+            new ButtonBuilder()
+              .setCustomId('verificar_email_button')
+              .setLabel('Verificar Email')
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji('🔍')
+          );
+
+        const row2 = new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId('desvincular_button')
+              .setLabel('Desvincular')
+              .setStyle(ButtonStyle.Danger)
+              .setEmoji('❌')
+          );
+
+        try {
+          // Busca as últimas mensagens do canal
+          const messages = await interaction.channel.messages.fetch({ limit: 50 });
+          
+          // Procura por uma mensagem do bot com o tutorial
+          const tutorialMessage = messages.find(msg => 
+            msg.author.id === client.user.id && 
+            msg.embeds.length > 0 && 
+            msg.embeds[0].title === '📚 Tutorial do Bot'
+          );
+
+          if (tutorialMessage) {
+            // Se encontrou uma mensagem existente, edita ela
+            await tutorialMessage.edit({
+              embeds: [embed],
+              components: [row1, row2]
+            });
+            
+            // Responde ao comando de forma efêmera
+            await interaction.reply({
+              content: '✅ Tutorial atualizado!',
+              ephemeral: true
+            });
+          } else {
+            // Se não encontrou, envia uma nova mensagem
+            await interaction.reply({
+              embeds: [embed],
+              components: [row1, row2]
+            });
+          }
+        } catch (error) {
+          console.error('Erro ao atualizar tutorial:', error);
+          // Em caso de erro, envia uma nova mensagem
+          await interaction.reply({
+            embeds: [embed],
+            components: [row1, row2]
+          });
+        }
+      }
+
+      // Comando /restringir
+      else if (commandName === 'restringir') {
+        // Verifica se o usuário tem o cargo Dev
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+        const temCargoDev = member.roles.cache.some(role => role.name.toLowerCase() === 'dev');
+
+        if (!temCargoDev) {
+          await interaction.reply({
+            content: '❌ Você não tem permissão para usar este comando. Apenas usuários com o cargo Dev podem usá-lo.',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const canalId = interaction.channel.id;
+        const estaRestrito = canaisRestritos.has(canalId);
+
+        if (estaRestrito) {
+          canaisRestritos.delete(canalId);
+          await interaction.reply({
+            content: '✅ Restrição de links desativada neste canal.',
+            ephemeral: true
+          });
+        } else {
+          canaisRestritos.set(canalId, true);
+          await interaction.reply({
+            content: '✅ Restrição de links ativada neste canal. Todos os links enviados por usuários serão removidos.',
+            ephemeral: true
+          });
+        }
       }
     }
     
@@ -1475,46 +1577,177 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // Exibe o modal
         await interaction.showModal(modal);
       }
+      else if (interaction.customId === 'registro_button') {
+        try {
+          const modal = criarModalEmail();
+          await interaction.showModal(modal);
+          console.log(`Modal de registro exibido para ${interaction.user.tag}`);
+        } catch (error) {
+          console.error('Erro ao exibir o modal de registro:', error);
+          await interaction.reply({ 
+            content: '❌ **Ocorreu um erro ao abrir o formulário de registro.** Por favor, tente novamente mais tarde.', 
+            ephemeral: true 
+          });
+        }
+      }
+      else if (interaction.customId === 'meu_email_button') {
+        const resultado = db.getEmailByUserId(interaction.user.id);
+        
+        if (!resultado.success || !resultado.data || !resultado.data.email) {
+          await interaction.reply({
+            content: 'Você ainda não tem um email registrado. Use /registro para vincular seu email.',
+            ephemeral: true
+          });
+          return;
+        }
+
+        try {
+          const emailCliente = await sheetSync.buscarClientePorEmail(resultado.data.email);
+          
+          const embed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle('📧 Suas informações registradas')
+            .addFields(
+              { name: 'E-mail', value: `\`${resultado.data.email}\`` },
+              { name: 'Plano', value: emailCliente?.nome_produto ? `\`${emailCliente.nome_produto}\`` : 'Nenhum plano encontrado' }
+            )
+            .setFooter({ text: 'Use /desvincular para remover seu registro.' });
+
+          await interaction.reply({
+            embeds: [embed],
+            ephemeral: true
+          });
+        } catch (error) {
+          console.error('Erro ao buscar informações do cliente:', error);
+          await interaction.reply({
+            content: 'Ocorreu um erro ao buscar suas informações. Por favor, tente novamente mais tarde.',
+            ephemeral: true
+          });
+        }
+      }
+      else if (interaction.customId === 'verificar_email_button') {
+        const modal = new ModalBuilder()
+          .setCustomId('verificar_email_modal')
+          .setTitle('🔍 Verificar Email');
+
+        const emailInput = new TextInputBuilder()
+          .setCustomId('email_verificar')
+          .setLabel('Digite o email para verificar')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('exemplo@dominio.com')
+          .setRequired(true);
+
+        const actionRow = new ActionRowBuilder().addComponents(emailInput);
+        modal.addComponents(actionRow);
+
+        await interaction.showModal(modal);
+      }
+      else if (interaction.customId === 'desvincular_button') {
+        const resultado = db.getEmailByUserId(interaction.user.id);
+        
+        if (resultado.success && resultado.data) {
+          const email = resultado.data.email;
+          
+          let cargosRemovidos = false;
+          if (interaction.guild) {
+            try {
+              const member = await interaction.guild.members.fetch(interaction.user.id);
+              cargosRemovidos = await removerCargosPlano(member);
+            } catch (error) {
+              console.error('Erro ao remover cargos de plano ao desvincular por botão:', error);
+            }
+          }
+          
+          db.unlinkUser(interaction.user.id);
+          const resultadoDesvinculacao = db.unregisterEmail(interaction.user.id);
+          
+          if (resultadoDesvinculacao.success) {
+            const embed = criarEmbedDesvinculacaoComCargos(email, cargosRemovidos);
+            await interaction.reply({
+              embeds: [embed],
+              ephemeral: true
+            });
+          } else {
+            const embed = criarEmbedErroDesvincular();
+            await interaction.reply({
+              embeds: [embed],
+              ephemeral: true
+            });
+          }
+        } else {
+          const embed = criarEmbedErroDesvincular();
+          await interaction.reply({
+            embeds: [embed],
+            ephemeral: true
+          });
+        }
+      }
+      else if (interaction.customId === 'planos_button') {
+        const planos = customerDb.getAllPlans();
+        
+        if (!planos.success || planos.data.length === 0) {
+          await interaction.reply({
+            content: '❌ **Nenhum plano encontrado no sistema.**',
+            ephemeral: true
+          });
+          return;
+        }
+        
+        const embed = criarEmbedListaPlanos(planos.data);
+        
+        await interaction.reply({
+          embeds: [embed],
+          ephemeral: true
+        });
+      }
+      else if (interaction.customId === 'ping_button') {
+        const embed = new EmbedBuilder()
+          .setColor(0x3498DB)
+          .setTitle('🏓 Pong!')
+          .setDescription(`**Latência:** ${client.ws.ping}ms`)
+          .setFooter({ text: `Solicitado por ${interaction.user.tag}` })
+          .setTimestamp();
+          
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+      }
     }
     
     // Tratamento de modais
     else if (interaction.type === InteractionType.ModalSubmit) {
       if (interaction.customId.startsWith('email-modal')) {
         try {
-          // Primeiro, adiar a resposta para evitar o timeout
-          await interaction.deferReply({ ephemeral: true });
-
           const email = interaction.fields.getTextInputValue('email-input').trim();
-
+    
           // Validação do email
           if (!validarEmail(email)) {
             console.log(`Email inválido recebido: ${email} de ${interaction.user.tag}`);
+    
             const embedErro = criarEmbedErro(email);
-            return await interaction.editReply({ embeds: [embedErro] });
+            return await interaction.reply({ embeds: [embedErro], ephemeral: true });
           }
-
+    
           // Verifica se o email já está registrado no sistema (banco local Discord)
           const emailVerificado = db.isEmailRegistered(email);
-
+    
           if (emailVerificado.exists) {
             if (emailVerificado.data.user_id === interaction.user.id) {
               const embed = criarEmbedInfoUsuario(emailVerificado.data);
-              return await interaction.editReply({ embeds: [embed] });
+              return await interaction.reply({ embeds: [embed], ephemeral: true });
             }
-
+    
             const dataFormatada = formatarData(emailVerificado.data.registered_at);
             const embedErroEmailJaRegistrado = criarEmbedErroEmailJaRegistrado(
               email,
               emailVerificado.data.user_tag,
               dataFormatada
             );
-
-            return await interaction.editReply({ embeds: [embedErroEmailJaRegistrado] });
+    
+            return await interaction.reply({ embeds: [embedErroEmailJaRegistrado], ephemeral: true });
           }
-
-          // Busca o cliente na planilha
+    
+          // Agora busca no banco da planilha
           const cliente = await sheetSync.buscarClientePorEmail(email);
-
+    
           if (!cliente) {
             const embedNaoEncontrado = new EmbedBuilder()
               .setColor(0xFF0000)
@@ -1522,16 +1755,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
               .setDescription('**O email informado não foi encontrado em nossa base de dados.**')
               .setFooter({ text: 'Verifique se digitou corretamente ou aguarde atualização do sistema.' })
               .setTimestamp();
-
-            return await interaction.editReply({ embeds: [embedNaoEncontrado] });
+    
+            return await interaction.reply({ embeds: [embedNaoEncontrado], ephemeral: true });
           }
-
+    
           // Se chegou aqui, email é válido e está na planilha
           // Se for atualização (email-modal-update), desvincula antes
           if (interaction.customId === 'email-modal-update') {
             db.unregisterEmail(interaction.user.id);
           }
-
+    
           // Registra email no banco
           const resultado = db.registerEmail(
             email,
@@ -1539,109 +1772,50 @@ client.on(Events.InteractionCreate, async (interaction) => {
             interaction.user.tag,
             interaction.guild ? interaction.guild.id : null
           );
-
+    
           if (resultado.success) {
             console.log(`E-mail registrado com sucesso: ${email} por ${interaction.user.tag}`);
+    
+            const embed = new EmbedBuilder()
+              .setColor(0x00FF00)
+              .setTitle('✅ Registro Concluído')
+              .addFields(
+                { name: '📧 E-mail', value: `\`${email}\`` },
+                { name: '🏷️ Plano', value: cliente?.nome_produto ? `\`${cliente.nome_produto}\`` : 'Não encontrado' }
+              )
+              .setFooter({ text: 'Obrigado por se registrar!' })
+              .setTimestamp();
 
-            // Busca o plano com maior preço entre as duplicatas
-            const planoMaiorPreco = await sheetSync.obterPlanoMaiorPreco(email);
-            console.log(`[DEBUG] Plano com maior preço:`, planoMaiorPreco);
+              // Depois de registrar o email com sucesso
+if (cliente?.nome_produto) {
+  const nomePlanoNormalizado = await sheetSync.getNormalizedPlanName(cliente.nome_produto);
+const planoInfo = await customerDb.getPlanByName(nomePlanoNormalizado);
 
-            if (planoMaiorPreco) {
-              try {
-                // Busca todas as compras do email para listar
-                const duplicatas = await sheetSync.buscarDuplicatasEmail(email);
-                console.log(`[DEBUG] Todas as compras encontradas:`, duplicatas);
 
-                // Vincula o usuário ao cliente usando o código do cliente
-                const linkResult = db.linkUserToCustomer(interaction.user.id, cliente.codigo_cliente);
-                if (!linkResult.success) {
-                  console.error('Erro ao vincular usuário ao cliente:', linkResult.error);
-                } else {
-                  console.log(`Usuário ${interaction.user.tag} vinculado ao cliente ${cliente.codigo_cliente}`);
-                }
+  if (planoInfo.success && planoInfo.data?.discord_role_id) {
+    try {
+      const guild = interaction.guild;
+      const member = await guild.members.fetch(interaction.user.id);
 
-                console.log(`[DEBUG] Plano original com maior preço: ${planoMaiorPreco.nome_produto} (R$ ${planoMaiorPreco.preco})`);
-                
-                // Normaliza o nome do plano (remove apenas o tamanho)
-                const nomePlanoExibicao = planoMaiorPreco.nome_produto.replace(/\s*-\s*Tamanho.*$/i, '').trim();
-                console.log(`[DEBUG] Nome do plano para exibição: ${nomePlanoExibicao}`);
-                
-                const nomePlanoNormalizado = await sheetSync.getNormalizedPlanName(planoMaiorPreco.nome_produto);
-                console.log(`[DEBUG] Plano normalizado para cargo: ${nomePlanoNormalizado}`);
-                
-                const planoInfo = await customerDb.getPlanByName(nomePlanoNormalizado);
-                console.log(`[DEBUG] Informações do plano:`, planoInfo);
+      await member.roles.add(planoInfo.data.discord_role_id);
 
-                const embed = new EmbedBuilder()
-                  .setColor(0x00FF00)
-                  .setTitle('✅ Registro Concluído')
-                  .addFields(
-                    { name: '📧 Email', value: `\`${email}\`` },
-                    { name: '📦 Plano', value: `\`${nomePlanoExibicao}\` (R$ ${planoMaiorPreco.preco})` }
-                  );
+      console.log(`Cargo ${planoInfo.data.discord_role_id} atribuído para ${interaction.user.tag}`);
+    } catch (error) {
+      console.error('Erro ao atribuir cargo:', error);
+    }
+  } else {
+    console.warn('Plano encontrado, mas sem cargo configurado.');
+  }
+}
 
-                if (duplicatas && duplicatas.length > 1) {
-                  // Adiciona todos os planos comprados
-                  embed.addFields({
-                    name: '📋 Todos os Planos',
-                    value: duplicatas.map(d => 
-                      `\`${d.nome_produto.replace(/\s*-\s*Tamanho.*$/i, '').trim()}\` (R$ ${d.preco})`
-                    ).join('\n'),
-                    inline: false
-                  });
-                }
 
-                if (planoInfo.success && planoInfo.data?.discord_role_id) {
-                  const member = await interaction.guild.members.fetch(interaction.user.id);
-                  
-                  // Remove cargos antigos primeiro
-                  const planosResult = customerDb.getAllPlans();
-                  if (planosResult.success) {
-                    for (const plano of planosResult.data) {
-                      if (plano.discord_role_id) {
-                        console.log(`[DEBUG] Removendo cargo antigo ${plano.discord_role_id}`);
-                        await member.roles.remove(plano.discord_role_id).catch(console.error);
-                      }
-                    }
-                  }
+    
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
 
-                  // Adiciona o novo cargo
-                  console.log(`[DEBUG] Adicionando novo cargo ${planoInfo.data.discord_role_id}`);
-                  await member.roles.add(planoInfo.data.discord_role_id);
-                  console.log(`[SUCESSO] Cargo ${planoInfo.data.discord_role_id} atribuído para ${interaction.user.tag}`);
-
-                  embed.addFields({
-                    name: '🏷️ Cargo',
-                    value: 'Seu cargo foi atualizado de acordo com seu plano!'
-                  });
-                } else {
-                  console.warn('[AVISO] Plano não encontrado ou sem cargo configurado:', nomePlanoNormalizado);
-                  embed.addFields({
-                    name: '⚠️ Cargo',
-                    value: 'Seu plano não tem um cargo configurado. Por favor, contate um administrador.'
-                  });
-                }
-
-                return await interaction.editReply({ embeds: [embed] });
-              } catch (error) {
-                console.error('[ERRO] Erro ao processar cargo:', error);
-                const embedErro = new EmbedBuilder()
-                  .setColor(0xFF0000)
-                  .setTitle('⚠️ Erro no Sistema')
-                  .setDescription('**Ocorreu um erro ao processar seu registro.**')
-                  .addFields(
-                    { name: '📧 Email', value: `\`${email}\`` },
-                    { name: '⚠️ Erro', value: 'Ocorreu um erro ao configurar seu cargo. Por favor, contate um administrador.' }
-                  )
-                  .setFooter({ text: 'O email foi registrado, mas houve um problema com o cargo.' })
-                  .setTimestamp();
-
-                return await interaction.editReply({ embeds: [embedErro] });
-              }
-            }
+            
           } else {
             console.error('Erro ao registrar email:', resultado.error);
+    
             const embedErroProcessamento = new EmbedBuilder()
               .setColor(0xFF0000)
               .setTitle('⚠️ Erro no Registro')
@@ -1651,22 +1825,58 @@ client.on(Events.InteractionCreate, async (interaction) => {
               )
               .setFooter({ text: 'Se o problema persistir, contate o administrador.' })
               .setTimestamp();
-
-            return await interaction.editReply({ embeds: [embedErroProcessamento] });
+    
+            return await interaction.reply({ embeds: [embedErroProcessamento], ephemeral: true });
           }
         } catch (error) {
           console.error('Erro ao processar o modal de registro:', error);
+    
           const embedErroSistema = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('⚠️ Erro no Sistema')
             .setDescription('**Ocorreu um erro ao processar seu registro.**')
             .setFooter({ text: 'Tente novamente mais tarde.' })
             .setTimestamp();
-
+    
           if (!interaction.replied) {
-            return await interaction.editReply({ embeds: [embedErroSistema] });
+            return await interaction.reply({ embeds: [embedErroSistema], ephemeral: true });
+          } else {
+            return await interaction.editReply({ embeds: [embedErroSistema], ephemeral: true });
           }
         }
+      }    
+    }
+    else if (interaction.customId === 'verificar_email_modal') {
+      const email = interaction.fields.getTextInputValue('email_verificar').trim();
+      
+      if (!validarEmail(email)) {
+        const embedErro = criarEmbedErro(email);
+        return await interaction.reply({ embeds: [embedErro], ephemeral: true });
+      }
+      
+      const cliente = await sheetSync.buscarClientePorEmail(email);
+      
+      if (cliente) {
+        const embed = new EmbedBuilder()
+          .setColor(0x00FF00)
+          .setTitle('✅ Email Encontrado')
+          .addFields(
+            { name: '📧 Email', value: `\`${email}\`` },
+            { name: '🏷️ Plano', value: `\`${cliente.nome_produto || 'Não informado'}\`` }
+          )
+          .setFooter({ text: 'Cliente localizado na base de dados.' })
+          .setTimestamp();
+      
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+      } else {
+        const embed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('❌ Email não encontrado')
+          .setDescription('**O email informado não está em nossa base de dados.**')
+          .setFooter({ text: 'Verifique se digitou corretamente.' })
+          .setTimestamp();
+      
+        await interaction.reply({ embeds: [embed], ephemeral: true });
       }
     }
   } catch (error) {
@@ -1782,6 +1992,33 @@ client.on(Events.MessageCreate, async (message) => {
         await message.reply({ embeds: [embedErro] });
       }
     }
+
+    // Verifica se o canal está restrito
+    if (canaisRestritos.has(message.channel.id)) {
+      // Expressão regular para detectar URLs
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      
+      // Verifica se a mensagem contém links
+      if (urlRegex.test(message.content)) {
+        try {
+          // Deleta a mensagem
+          await message.delete();
+          
+          // Envia uma mensagem de aviso (opcional)
+          const aviso = await message.channel.send({
+            content: `⚠️ ${message.author}, links não são permitidos neste canal.`,
+            allowedMentions: { users: [message.author.id] }
+          });
+          
+          // Deleta a mensagem de aviso após 5 segundos
+          setTimeout(() => {
+            aviso.delete().catch(console.error);
+          }, 5000);
+        } catch (error) {
+          console.error('Erro ao processar mensagem com link:', error);
+        }
+      }
+    }
   } catch (error) {
     console.error('Erro ao processar mensagem:', error);
   }
@@ -1874,57 +2111,4 @@ function criarEmbedClienteNaoEncontradoTray(email) {
       { name: '🔍 O que fazer?', value: 'Certifique-se de que o email está correto e que você já realizou compras na loja.' }
     )
     .setFooter({ text: 'Se o problema persistir, contate o administrador.' });
-}
-
-// Função para verificar se o usuário tem permissões elevadas
-function temPermissaoElevada(member) {
-  // Verifica se o usuário tem permissão de administrador
-  if (member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-    return true;
-  }
-
-  // Verifica se o usuário tem algum dos cargos elevados
-  const cargosElevados = [
-    'Admin Setup',
-    'Dev'
-  ];
-
-  return member.roles.cache.some(role => 
-    cargosElevados.some(cargo => 
-      role.name.toLowerCase().includes(cargo.toLowerCase())
-    )
-  );
-}
-
-// Função para atualizar cargo do usuário com base no plano
-async function atualizarCargoUsuario(member, planoNome) {
-  try {
-    // Busca todos os planos disponíveis
-    const planosResult = customerDb.getAllPlans();
-    if (!planosResult.success) {
-      console.error('Erro ao buscar planos:', planosResult.error);
-      return false;
-    }
-
-    const planos = planosResult.data;
-    
-    // Remove todos os cargos de plano existentes
-    for (const plano of planos) {
-      if (plano.discord_role_id) {
-        await member.roles.remove(plano.discord_role_id).catch(console.error);
-      }
-    }
-
-    // Encontra o plano correspondente e adiciona o cargo
-    const planoCorrespondente = planos.find(p => p.name.toLowerCase() === planoNome.toLowerCase());
-    if (planoCorrespondente && planoCorrespondente.discord_role_id) {
-      await member.roles.add(planoCorrespondente.discord_role_id);
-      return true;
-    }
-    
-    return false;
-  } catch (error) {
-    console.error('Erro ao atualizar cargo:', error);
-    return false;
-  }
 }

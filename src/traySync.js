@@ -1,4 +1,4 @@
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const TrayApiClient = require('./trayApiClient');
@@ -11,39 +11,70 @@ if (!fs.existsSync(dataDir)) {
 
 // Caminho do banco de dados de configuração
 const configDbPath = path.join(dataDir, 'tray_config.db');
-const configDb = new Database(configDbPath);
+const configDb = new sqlite3.Database(configDbPath);
 
 // Caminho do banco de dados de clientes
 const customersDbPath = path.join(dataDir, 'customers.db');
-const customersDb = new Database(customersDbPath);
+const customersDb = new sqlite3.Database(customersDbPath);
 
 // Cliente da API Tray
 const trayClient = new TrayApiClient();
+
+// Função para executar consultas de forma assíncrona
+function runAsync(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (err) reject(err);
+      else resolve(this);
+    });
+  });
+}
+
+// Função para executar consultas que retornam uma única linha
+function getAsync(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+}
+
+// Função para executar consultas que retornam múltiplas linhas
+function allAsync(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+}
 
 /**
  * Inicializa o banco de dados de configuração da Tray
  */
 function initTrayConfigDatabase() {
-  try {
-    // Tabela de configuração da Tray
-    configDb.prepare(`
-      CREATE TABLE IF NOT EXISTS tray_config (
-        id INTEGER PRIMARY KEY,
-        api_address TEXT NOT NULL,
-        access_token TEXT,
-        refresh_token TEXT,
-        api_host TEXT,
-        expiration_date TEXT,
-        refresh_expiration_date TEXT,
-        store_id TEXT,
-        last_sync TEXT
-      )
-    `).run();
+  const createTableSQL = `
+    CREATE TABLE IF NOT EXISTS tray_config (
+      id INTEGER PRIMARY KEY,
+      api_address TEXT NOT NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      api_host TEXT,
+      expiration_date TEXT,
+      refresh_expiration_date TEXT,
+      store_id TEXT,
+      last_sync TEXT
+    );
+  `;
 
-    console.log('Banco de dados de configuração da Tray inicializado com sucesso!');
-  } catch (error) {
-    console.error('Erro ao inicializar banco de dados de configuração da Tray:', error);
-  }
+  configDb.exec(createTableSQL, (err) => {
+    if (err) {
+      console.error('Erro ao criar tabela de configuração:', err);
+    } else {
+      console.log('Tabela de configuração criada com sucesso');
+    }
+  });
 }
 
 /**
