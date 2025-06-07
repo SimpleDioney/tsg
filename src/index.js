@@ -1647,17 +1647,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 try {
                   console.log(`[DEBUG] Tentando aplicar cargo para o usuário ${interaction.user.tag}`);
                   const member = await interaction.guild.members.fetch(interaction.user.id);
-                  const cargoAplicado = await aplicarCargoPlano(member, planoMaiorPreco);
                   
-                  if (cargoAplicado) {
-                    console.log(`[DEBUG] Cargo aplicado com sucesso para ${interaction.user.tag}`);
+                  // Busca o plano normalizado no banco de dados
+                  const nomePlanoNormalizado = await sheetSync.getNormalizedPlanName(planoMaiorPreco.nome_produto);
+                  console.log(`[DEBUG] Nome do plano normalizado: ${nomePlanoNormalizado}`);
+                  
+                  const planoInfo = customerDb.getPlanByName(nomePlanoNormalizado);
+                  console.log(`[DEBUG] Informações do plano:`, planoInfo);
+                  
+                  if (planoInfo.success && planoInfo.data) {
+                    const cargoAplicado = await aplicarCargoPlano(member, planoInfo.data);
+                    
+                    if (cargoAplicado) {
+                      console.log(`[DEBUG] Cargo aplicado com sucesso para ${interaction.user.tag}`);
+                      embed.addFields({
+                        name: '🏷️ Cargo',
+                        value: 'O cargo correspondente ao seu plano foi aplicado com sucesso!',
+                        inline: false
+                      });
+                    } else {
+                      console.log(`[DEBUG] Nenhum cargo foi aplicado para ${interaction.user.tag}`);
+                      embed.addFields({
+                        name: '⚠️ Cargo',
+                        value: 'Não foi possível aplicar o cargo correspondente ao seu plano. Por favor, contate um administrador.',
+                        inline: false
+                      });
+                    }
+                  } else {
+                    console.log(`[DEBUG] Plano não encontrado no banco de dados: ${nomePlanoNormalizado}`);
                     embed.addFields({
-                      name: '🏷️ Cargo',
-                      value: 'O cargo correspondente ao seu plano foi aplicado com sucesso!',
+                      name: '⚠️ Cargo',
+                      value: 'O cargo para este plano ainda não foi configurado. Por favor, contate um administrador.',
                       inline: false
                     });
-                  } else {
-                    console.log(`[DEBUG] Nenhum cargo foi aplicado para ${interaction.user.tag}`);
                   }
                 } catch (error) {
                   console.error('[ERRO] Erro ao processar cargo:', error);
