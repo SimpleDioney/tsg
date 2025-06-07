@@ -1,5 +1,5 @@
 // Importações necessárias
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 
@@ -15,81 +15,87 @@ const dbPath = path.join(dataDir, 'emails.db');
 // Log do caminho do banco de dados
 console.log(`Usando banco de dados em: ${dbPath}`);
 
-// Inicializa o banco de dados
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Erro ao abrir o banco de dados:', err);
-    return;
-  }
-  console.log('Conexão com o banco de dados estabelecida');
-  
-  // Define pragmas importantes
-  db.run('PRAGMA journal_mode = WAL');
-  db.run('PRAGMA synchronous = NORMAL');
-  db.run('PRAGMA foreign_keys = ON');
-  
-  // Inicializa as tabelas
-  initDatabase();
+// Inicializa o banco de dados com configurações para melhorar a confiabilidade
+const db = new Database(dbPath, {
+  verbose: console.log,   // Log de todas as consultas SQL (remova em produção)
+  fileMustExist: false,   // Não exige que o arquivo exista
+  timeout: 5000,          // Tempo de espera para operações bloqueadas (ms)
 });
 
-// Função para executar consultas de forma assíncrona
-function runAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
-}
+// Define pragmas importantes para garantir a consistência dos dados
+db.pragma('journal_mode = WAL');       // Write-Ahead Logging para melhor performance e confiabilidade
+db.pragma('synchronous = NORMAL');     // Compromisso entre velocidade e segurança
+db.pragma('foreign_keys = ON');        // Ativa constraints de chave estrangeira
 
-// Função para executar consultas que retornam uma única linha
-function getAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-}
+// Executa checkpoint a cada 30 segundos para garantir que os dados sejam salvos no arquivo principal
+const CHECKPOINT_INTERVAL = 30000; // 30 segundos
+let checkpointInterval = null;
 
-// Função para executar consultas que retornam múltiplas linhas
-function allAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+// Função para executar checkpoint
+function executeCheckpoint() {
+  try {
+    db.pragma('wal_checkpoint(PASSIVE)');
+    console.log('Checkpoint executado com sucesso');
+  } catch (error) {
+    console.error('Erro ao executar checkpoint:', error);
+  }
 }
 
 // Inicialização das tabelas
 function initDatabase() {
-  const createTableSQL = `
-    CREATE TABLE IF NOT EXISTS emails (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      user_id TEXT NOT NULL,
-      user_tag TEXT NOT NULL,
-      guild_id TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE TABLE IF NOT EXISTS user_customer_links (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id TEXT UNIQUE NOT NULL,
-      customer_id TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `;
+  try {
+    // Recria a tabela de emails com o formato correto de timestamp
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS emails (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        user_tag TEXT NOT NULL,
+        guild_id TEXT,
+        registered_at INTEGER DEFAULT (strftime('%s','now')),
+        updated_at INTEGER DEFAULT (strftime('%s','now'))
+      )
+    `).run();
 
-  db.exec(createTableSQL, (err) => {
-    if (err) {
-      console.error('Erro ao criar tabelas:', err);
-    } else {
-      console.log('Tabelas criadas com sucesso');
+    // Cria índice para melhorar a busca por user_id e email
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_emails_user_id ON emails(user_id)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_emails_email ON emails(email)`).run();
+
+    // Cria tabela de vinculação entre usuários do Discord e clientes
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL UNIQUE,
+        customer_id TEXT NOT NULL,
+        linked_at INTEGER DEFAULT (strftime('%s','now'))
+      )
+    `).run();
+
+    // Cria índice para melhorar a busca por user_id e customer_id
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_links_user_id ON user_links(user_id)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_links_customer_id ON user_links(customer_id)`).run();
+
+    // Cria tabela de canais restritos
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS restricted_channels (
+        channel_id TEXT PRIMARY KEY,
+        restricted_at INTEGER DEFAULT (strftime('%s','now'))
+      )
+    `).run();
+
+    // Cria índice para melhorar a busca por channel_id
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_restricted_channels_channel_id ON restricted_channels(channel_id)`).run();
+
+    console.log('Banco de dados inicializado com sucesso!');
+    
+    // Inicia o intervalo de checkpoint
+    if (checkpointInterval === null) {
+      checkpointInterval = setInterval(executeCheckpoint, CHECKPOINT_INTERVAL);
+      console.log(`Intervalo de checkpoint configurado para ${CHECKPOINT_INTERVAL/1000} segundos`);
     }
-  });
+  } catch (error) {
+    console.error('Erro ao inicializar banco de dados:', error);
+  }
 }
 
 // Registra um novo email
@@ -136,6 +142,11 @@ function getEmailByUserId(userId) {
   }
 }
 
+// Alias para getEmailByUserId para manter compatibilidade
+function getUserEmail(userId) {
+  return getEmailByUserId(userId);
+}
+
 // Obtém informações sobre um email
 function getEmailInfo(email) {
   try {
@@ -174,32 +185,48 @@ function unregisterEmail(userId) {
 
 // Vincula um usuário do Discord a um cliente
 function linkUserToCustomer(userId, customerId) {
+  console.log(`[DEBUG] Iniciando vinculação do usuário ${userId} ao cliente ${customerId}`);
+  
   try {
-    // Verifica se o usuário já está vinculado
-    const existingLink = db.prepare('SELECT * FROM user_customer_links WHERE user_id = ?').get(userId);
+    // Verifica se a tabela existe
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name='user_links'
+    `).get();
     
+    if (!tableExists) {
+      console.error('[ERRO] Tabela user_links não encontrada');
+      return { success: false, error: 'TABLE_NOT_FOUND' };
+    }
+
+    // Verifica se já existe um vínculo para este usuário
+    const existingLink = db.prepare(`
+      SELECT * FROM user_links 
+      WHERE user_id = ?
+    `).get(userId);
+
     if (existingLink) {
-      // Atualiza a vinculação
-      const updateStmt = db.prepare(`
-        UPDATE user_customer_links 
-        SET customer_id = ?, created_at = CURRENT_TIMESTAMP
+      console.log(`[DEBUG] Vínculo existente encontrado para o usuário ${userId}, atualizando...`);
+      // Atualiza o vínculo existente
+      db.prepare(`
+        UPDATE user_links 
+        SET customer_id = ?, linked_at = strftime('%s','now')
         WHERE user_id = ?
-      `);
-      
-      updateStmt.run(customerId, userId);
-      return { success: true, updated: true };
+      `).run(customerId, userId);
+      console.log(`[DEBUG] Vínculo atualizado com sucesso`);
+      return { success: true };
     } else {
-      // Cria uma nova vinculação
-      const insertStmt = db.prepare(`
-        INSERT INTO user_customer_links (user_id, customer_id)
+      console.log(`[DEBUG] Criando novo vínculo para o usuário ${userId}`);
+      // Cria um novo vínculo
+      db.prepare(`
+        INSERT INTO user_links (user_id, customer_id)
         VALUES (?, ?)
-      `);
-      
-      insertStmt.run(userId, customerId);
-      return { success: true, updated: false };
+      `).run(userId, customerId);
+      console.log(`[DEBUG] Novo vínculo criado com sucesso`);
+      return { success: true };
     }
   } catch (error) {
-    console.error('Erro ao vincular usuário ao cliente:', error);
+    console.error(`[ERRO] Erro ao vincular usuário ao cliente:`, error);
     return { success: false, error: 'DATABASE_ERROR' };
   }
 }
@@ -207,7 +234,7 @@ function linkUserToCustomer(userId, customerId) {
 // Obtém a vinculação de um usuário
 function getUserLink(userId) {
   try {
-    const stmt = db.prepare('SELECT * FROM user_customer_links WHERE user_id = ?');
+    const stmt = db.prepare('SELECT * FROM user_links WHERE user_id = ?');
     const result = stmt.get(userId);
     
     if (!result) {
@@ -232,7 +259,7 @@ function unlinkUser(userId) {
     }
     
     // Remove a vinculação
-    const stmt = db.prepare('DELETE FROM user_customer_links WHERE user_id = ?');
+    const stmt = db.prepare('DELETE FROM user_links WHERE user_id = ?');
     const result = stmt.run(userId);
     
     if (result.changes > 0) {
@@ -249,7 +276,7 @@ function unlinkUser(userId) {
 // Obtém todos os emails registrados (para fins administrativos)
 function getAllEmails() {
   try {
-    const stmt = db.prepare('SELECT * FROM emails ORDER BY created_at DESC');
+    const stmt = db.prepare('SELECT * FROM emails ORDER BY registered_at DESC');
     const results = stmt.all();
     return { success: true, data: results };
   } catch (error) {
@@ -261,11 +288,49 @@ function getAllEmails() {
 // Obtém todos os vínculos entre usuários e clientes (para uso administrativo)
 function getAllLinks() {
   try {
-    const stmt = db.prepare('SELECT * FROM user_customer_links ORDER BY created_at DESC');
+    console.log('[DEBUG] Iniciando busca de todos os vínculos...');
+    
+    // Primeiro verifica se a tabela existe
+    const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_links'");
+    const tableExists = tableCheck.get();
+    
+    if (!tableExists) {
+      console.error('[ERRO] Tabela user_links não encontrada!');
+      return { success: false, error: 'TABLE_NOT_FOUND' };
+    }
+    
+    console.log('[DEBUG] Tabela user_links encontrada, verificando estrutura...');
+    
+    // Verifica a estrutura da tabela
+    const tableInfo = db.prepare("PRAGMA table_info(user_links)").all();
+    console.log('[DEBUG] Estrutura da tabela user_links:', tableInfo);
+    
+    // Verifica se há registros
+    const countStmt = db.prepare('SELECT COUNT(*) as count FROM user_links');
+    const countResult = countStmt.get();
+    console.log(`[DEBUG] Total de registros na tabela user_links: ${countResult.count}`);
+    
+    // Busca todos os registros
+    const stmt = db.prepare('SELECT * FROM user_links ORDER BY linked_at DESC');
     const results = stmt.all();
-    return { success: true, data: results };
+    
+    console.log(`[DEBUG] Encontrados ${results.length} vínculos`);
+    if (results.length > 0) {
+      console.log('[DEBUG] Primeiro vínculo encontrado:', results[0]);
+    } else {
+      console.log('[DEBUG] Nenhum vínculo encontrado na tabela user_links');
+    }
+    
+    return { 
+      success: true, 
+      data: results,
+      metadata: {
+        total_records: countResult.count,
+        table_structure: tableInfo
+      }
+    };
   } catch (error) {
-    console.error('Erro ao buscar todos os vínculos:', error);
+    console.error('[ERRO] Erro ao buscar todos os vínculos:', error);
     return { success: false, error: 'DATABASE_ERROR' };
   }
 }
@@ -275,11 +340,138 @@ function closeDatabase() {
   if (db) {
     console.log('Fechando conexão com o banco de dados de emails...');
     try {
+      // Executar um checkpoint final antes de fechar
+      if (db.pragma) {
+        db.pragma('wal_checkpoint(FULL)');
+      }
       db.close();
       console.log('Banco de dados de emails fechado com sucesso');
     } catch (err) {
       console.error('Erro ao fechar o banco de dados de emails:', err.message);
     }
+    
+    // Limpar o intervalo de checkpoint se existir
+    if (checkpointInterval !== null) {
+      clearInterval(checkpointInterval);
+      checkpointInterval = null;
+      console.log('Intervalo de checkpoint de emails encerrado');
+    }
+  }
+}
+
+// Função para automatizar a vinculação entre emails registrados e clientes
+async function autoLinkEmailsToCustomers() {
+  try {
+    console.log('[DEBUG] Iniciando vinculação automática de emails...');
+    
+    // Busca todos os emails registrados
+    const emailsResult = getAllEmails();
+    if (!emailsResult.success) {
+      console.error('[ERRO] Erro ao buscar emails:', emailsResult.error);
+      return { success: false, error: 'EMAILS_FETCH_ERROR' };
+    }
+
+    const emails = emailsResult.data;
+    console.log(`[DEBUG] Encontrados ${emails.length} emails registrados`);
+
+    // Busca todos os clientes da planilha
+    const sheetSync = require('./sheetSync');
+    const clientes = await new Promise((resolve, reject) => {
+      sheetSync.db.all('SELECT * FROM customers', [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+    console.log(`[DEBUG] Encontrados ${clientes.length} clientes na planilha`);
+
+    let vinculacoesCriadas = 0;
+    let erros = 0;
+
+    // Para cada email registrado
+    for (const email of emails) {
+      try {
+        // Busca o cliente correspondente na planilha
+        const cliente = clientes.find(c => 
+          c.email_cliente && 
+          c.email_cliente.trim().toLowerCase() === email.email.trim().toLowerCase()
+        );
+
+        if (cliente) {
+          // Tenta vincular o usuário ao cliente
+          const linkResult = linkUserToCustomer(email.user_id, cliente.codigo_cliente);
+          
+          if (linkResult.success) {
+            console.log(`[DEBUG] Vinculado: ${email.email} -> ${cliente.codigo_cliente}`);
+            vinculacoesCriadas++;
+          } else {
+            console.error(`[ERRO] Erro ao vincular ${email.email}:`, linkResult.error);
+            erros++;
+          }
+        }
+      } catch (error) {
+        console.error(`[ERRO] Erro ao processar email ${email.email}:`, error);
+        erros++;
+      }
+    }
+
+    console.log(`[DEBUG] Vinculação automática concluída: ${vinculacoesCriadas} vínculos criados, ${erros} erros`);
+    
+    return { 
+      success: true, 
+      data: { 
+        total_emails: emails.length,
+        total_clientes: clientes.length,
+        vinculacoes_criadas: vinculacoesCriadas,
+        erros: erros
+      }
+    };
+  } catch (error) {
+    console.error('[ERRO] Erro na vinculação automática:', error);
+    return { success: false, error: 'AUTO_LINK_ERROR' };
+  }
+}
+
+// Função para adicionar um canal restrito
+function addRestrictedChannel(channelId) {
+  try {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO restricted_channels (channel_id)
+      VALUES (?)
+    `);
+    
+    const result = stmt.run(channelId);
+    return { success: true };
+  } catch (error) {
+    console.error('Erro ao adicionar canal restrito:', error);
+    return { success: false, error: 'DATABASE_ERROR' };
+  }
+}
+
+// Função para remover um canal restrito
+function removeRestrictedChannel(channelId) {
+  try {
+    const stmt = db.prepare('DELETE FROM restricted_channels WHERE channel_id = ?');
+    const result = stmt.run(channelId);
+    return { success: true };
+  } catch (error) {
+    console.error('Erro ao remover canal restrito:', error);
+    return { success: false, error: 'DATABASE_ERROR' };
+  }
+}
+
+// Função para obter todos os canais restritos
+function getRestrictedChannels() {
+  try {
+    const stmt = db.prepare('SELECT channel_id FROM restricted_channels');
+    const results = stmt.all();
+    return { 
+      success: true, 
+      data: results.map(row => row.channel_id)
+    };
+  } catch (error) {
+    console.error('Erro ao buscar canais restritos:', error);
+    return { success: false, error: 'DATABASE_ERROR' };
   }
 }
 
@@ -289,6 +481,7 @@ module.exports = {
   registerEmail,
   isEmailRegistered,
   getEmailByUserId,
+  getUserEmail,
   getEmailInfo,
   unregisterEmail,
   linkUserToCustomer,
@@ -296,5 +489,10 @@ module.exports = {
   unlinkUser,
   getAllEmails,
   getAllLinks,
-  closeDatabase
+  autoLinkEmailsToCustomers,
+  closeDatabase,
+  // Novas funções
+  addRestrictedChannel,
+  removeRestrictedChannel,
+  getRestrictedChannels
 }; 

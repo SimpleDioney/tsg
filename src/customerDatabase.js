@@ -1,7 +1,7 @@
 // customerDatabase.js atualizado
 
 // Importações necessárias
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 
@@ -17,82 +17,91 @@ const dbPath = path.join(dataDir, 'customers.db');
 console.log(`Usando banco de dados de clientes em: ${dbPath}`);
 
 // Inicializa o banco de dados
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Erro ao abrir o banco de dados de clientes:', err);
-    return;
-  }
-  console.log('Conexão com o banco de dados de clientes estabelecida');
-  
-  // Define pragmas importantes
-  db.run('PRAGMA journal_mode = WAL');
-  db.run('PRAGMA synchronous = NORMAL');
-  db.run('PRAGMA foreign_keys = ON');
-  
-  // Inicializa as tabelas
-  initDatabase();
+const db = new Database(dbPath, {
+  verbose: null,
+  fileMustExist: false,
+  timeout: 5000,
 });
 
-// Função para executar consultas de forma assíncrona
-function runAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
-}
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
+db.pragma('foreign_keys = ON');
 
-// Função para executar consultas que retornam uma única linha
-function getAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-}
+const CHECKPOINT_INTERVAL = 30000;
+let checkpointInterval = null;
 
-// Função para executar consultas que retornam múltiplas linhas
-function allAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+function executeCheckpoint() {
+  try {
+    db.pragma('wal_checkpoint(PASSIVE)');
+    console.log('Checkpoint do banco de clientes executado com sucesso');
+  } catch (error) {
+    console.error('Erro ao executar checkpoint do banco de clientes:', error);
+  }
 }
 
 function initDatabase() {
-  const createTableSQL = `
-    CREATE TABLE IF NOT EXISTS plans (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT,
-      discord_role_id TEXT,
-      created TEXT,
-      updated TEXT
-    );
-    
-    CREATE TABLE IF NOT EXISTS customers (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      plan_id TEXT,
-      status TEXT DEFAULT 'active',
-      created TEXT,
-      updated TEXT,
-      FOREIGN KEY (plan_id) REFERENCES plans(id)
-    );
-  `;
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        discord_role_id TEXT,
+        created TEXT,
+        modified TEXT
+      )
+    `).run();
 
-  db.exec(createTableSQL, (err) => {
-    if (err) {
-      console.error('Erro ao criar tabelas do banco de clientes:', err);
-    } else {
-      console.log('Tabelas do banco de clientes criadas com sucesso');
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        cpf TEXT,
+        birth_date TEXT,
+        gender TEXT,
+        email TEXT UNIQUE,
+        cnpj TEXT,
+        last_visit TEXT,
+        city TEXT,
+        state TEXT,
+        newsletter TEXT,
+        plan_id TEXT,
+        created TEXT,
+        registration_date TEXT,
+        modified TEXT,
+        FOREIGN KEY (plan_id) REFERENCES plans(id)
+      )
+    `).run();
+
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS customer_addresses (
+        id TEXT PRIMARY KEY,
+        customer_id TEXT,
+        address TEXT,
+        number TEXT,
+        complement TEXT,
+        district TEXT,
+        city TEXT,
+        state TEXT,
+        zip_code TEXT,
+        FOREIGN KEY (customer_id) REFERENCES customers(id)
+      )
+    `).run();
+
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_customers_plan_id ON customers(plan_id)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_customer_addresses_customer_id ON customer_addresses(customer_id)`).run();
+
+    console.log('Banco de dados de clientes inicializado com sucesso!');
+
+    if (checkpointInterval === null) {
+      checkpointInterval = setInterval(executeCheckpoint, CHECKPOINT_INTERVAL);
+      console.log(`Intervalo de checkpoint do banco de clientes configurado para ${CHECKPOINT_INTERVAL/1000} segundos`);
     }
-  });
+
+  } catch (error) {
+    console.error('Erro ao inicializar banco de dados de clientes:', error);
+  }
 }
 
 function getCustomerByEmail(email) {
@@ -229,6 +238,11 @@ function updatePlanRole(planId, roleId) {
 
 function closeDatabase() {
   try {
+    if (checkpointInterval !== null) {
+      clearInterval(checkpointInterval);
+      checkpointInterval = null;
+    }
+
     executeCheckpoint();
     db.close();
     console.log('Conexão com o banco de dados de clientes fechada');
