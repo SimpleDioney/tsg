@@ -2131,10 +2131,9 @@ async function handleRelatorio(interaction) {
       });
     }
 
-    // Busca todos os membros do servidor
+    // Busca o total de membros do servidor
     const guild = interaction.guild;
-    const members = await guild.members.fetch();
-    const totalMembros = members.size;
+    const totalMembros = guild.memberCount;
 
     const emails = emailsResult.data;
     const planos = planosResult.data;
@@ -2148,24 +2147,25 @@ async function handleRelatorio(interaction) {
       usuariosPorPlano[plano.name] = 0;
     });
 
-    // Busca todas as compras de uma vez
-    const comprasPromises = emails.map(email => sheetSync.buscarDuplicatasEmail(email.email));
-    const comprasResults = await Promise.all(comprasPromises);
+    // Busca todos os vínculos
+    const vinculosResult = await db.getAllLinks();
+    if (!vinculosResult.success) {
+      return interaction.editReply({
+        content: '❌ Erro ao buscar vínculos.',
+        ephemeral: true
+      });
+    }
 
-    // Processa os resultados
-    for (let i = 0; i < emails.length; i++) {
-      const email = emails[i];
-      const compras = comprasResults[i];
+    // Processa os vínculos
+    for (const vinculo of vinculosResult.data) {
+      const email = emails.find(e => e.user_id === vinculo.user_id);
+      if (!email) continue;
 
-      if (!compras || compras.length === 0) continue;
+      // Busca o plano do usuário
+      const planoResult = await customerDb.getPlanByUserId(vinculo.user_id);
+      if (!planoResult.success || !planoResult.data) continue;
 
-      // Ordena as compras por preço (maior primeiro)
-      compras.sort((a, b) => b.preco_decimal - a.preco_decimal);
-      const planoMaiorPreco = compras[0];
-
-      const nomePlanoNormalizado = sheetSync.getNormalizedPlanName(planoMaiorPreco.nome_produto);
-      const plano = planos.find(p => p.name === nomePlanoNormalizado);
-
+      const plano = planos.find(p => p.id === planoResult.data.plan_id);
       if (plano) {
         usuariosPorPlano[plano.name]++;
         usuariosSemPlano--; // Subtrai do total de usuários sem plano
