@@ -289,7 +289,7 @@ async function criarEmbedInfoUsuario(emailData) {
   embed.setFooter({ text: 'Para desvincular seu email, use o comando /desvincular' })
        .setTimestamp();
 
-  return embed;
+  return embed.toJSON();
 }
 
 // Função para criar embed de erro de cliente não encontrado
@@ -971,7 +971,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             const duplicatas = await sheetSync.buscarDuplicatasEmail(resultado.data.email);
             console.log(`[DEBUG] Compras encontradas:`, duplicatas);
             
-            const embed = criarEmbedInfoUsuario(resultado.data);
+            const embed = await criarEmbedInfoUsuario(resultado.data);
 
             if (duplicatas && duplicatas.length > 0) {
               // Adiciona um campo para cada plano comprado
@@ -1515,7 +1515,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
             });
           }
           
-          const embed = await criarEmbedInfoUsuario(emailData.data);
+          const embedData = await criarEmbedInfoUsuario(emailData.data);
+          const embed = new EmbedBuilder(embedData);
+          
           await interaction.editReply({
             embeds: [embed]
           });
