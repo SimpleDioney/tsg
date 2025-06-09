@@ -1381,6 +1381,171 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         }
       }
+
+      // Comando /relatorio
+      else if (commandName === 'relatorio') {
+        try {
+          // Verifica se o usuário tem permissão
+          if (!temPermissaoElevada(interaction.member)) {
+            return await interaction.reply({
+              embeds: [criarEmbedErroPermissao()],
+              ephemeral: true
+            });
+          }
+
+          await interaction.deferReply({ ephemeral: true });
+
+          // Busca todos os emails registrados
+          const emailsResult = db.getAllEmails();
+          if (!emailsResult.success) {
+            return await interaction.editReply({
+              embeds: [criarEmbedErro('Erro ao buscar emails registrados.')],
+              ephemeral: true
+            });
+          }
+
+          // Busca todos os planos configurados
+          const planosResult = customerDb.getAllPlans();
+          if (!planosResult.success) {
+            return await interaction.editReply({
+              embeds: [criarEmbedErro('Erro ao buscar planos configurados.')],
+              ephemeral: true
+            });
+          }
+
+          // Mapa para contar usuários por plano
+          const contagemPorPlano = new Map();
+          let usuariosSemPlano = 0;
+
+          // Inicializa o mapa com todos os planos
+          planosResult.data.forEach(plano => {
+            contagemPorPlano.set(plano.name, 0);
+          });
+
+          // Processa cada email registrado
+          for (const email of emailsResult.data) {
+            try {
+              // Busca as compras do email
+              const duplicatas = await sheetSync.buscarDuplicatasEmail(email.email);
+              
+              if (duplicatas && duplicatas.length > 0) {
+                // Ordena por preço (maior primeiro)
+                duplicatas.sort((a, b) => b.preco_decimal - a.preco_decimal);
+                
+                // Pega o plano de maior valor
+                const planoMaiorPreco = duplicatas[0];
+                const nomePlanoNormalizado = await sheetSync.getNormalizedPlanName(planoMaiorPreco.nome_produto);
+                
+                // Incrementa o contador do plano
+                const contagemAtual = contagemPorPlano.get(nomePlanoNormalizado) || 0;
+                contagemPorPlano.set(nomePlanoNormalizado, contagemAtual + 1);
+              } else {
+                usuariosSemPlano++;
+              }
+            } catch (error) {
+              console.error(`Erro ao processar email ${email.email}:`, error);
+              usuariosSemPlano++;
+            }
+          }
+
+          // Cria o embed com as estatísticas
+          const embed = new EmbedBuilder()
+            .setColor(0x1E90FF)
+            .setTitle('📊 Relatório de Planos')
+            .setDescription(`**Total de usuários registrados: ${emailsResult.data.length}**`)
+            .addFields(
+              { name: '👥 Usuários sem Plano', value: `${usuariosSemPlano}`, inline: false }
+            );
+
+          // Adiciona cada plano ao embed
+          for (const [plano, quantidade] of contagemPorPlano) {
+            if (quantidade > 0) {
+              embed.addFields({
+                name: `🔰 ${plano}`,
+                value: `${quantidade} usuário${quantidade !== 1 ? 's' : ''}`,
+                inline: true
+              });
+            }
+          }
+
+          embed.setFooter({ text: 'Última atualização' })
+               .setTimestamp();
+
+          await interaction.editReply({ embeds: [embed], ephemeral: true });
+        } catch (error) {
+          console.error('Erro ao gerar relatório:', error);
+          await interaction.editReply({
+            embeds: [criarEmbedErro('Ocorreu um erro ao gerar o relatório.')],
+            ephemeral: true
+          });
+        }
+      }
+
+      // Comando /compras
+      else if (commandName === 'compras') {
+        try {
+          const email = interaction.options.getString('email');
+          
+          if (!email) {
+            return await interaction.reply({
+              embeds: [criarEmbedErro('Por favor, forneça um email válido.')],
+              ephemeral: true
+            });
+          }
+
+          await interaction.deferReply({ ephemeral: true });
+
+          // Busca as compras do email
+          const duplicatas = await sheetSync.buscarDuplicatasEmail(email);
+          
+          if (!duplicatas || duplicatas.length === 0) {
+            return await interaction.editReply({
+              embeds: [criarEmbedErro(`Nenhuma compra encontrada para o email: ${email}`)],
+              ephemeral: true
+            });
+          }
+
+          // Ordena por preço (maior primeiro)
+          duplicatas.sort((a, b) => b.preco_decimal - a.preco_decimal);
+
+          // Cria o embed com as compras
+          const embed = new EmbedBuilder()
+            .setColor(0x1E90FF)
+            .setTitle('🛍️ Histórico de Compras')
+            .setDescription(`**Compras encontradas para o email:** \`${email}\``)
+            .addFields(
+              { name: '📦 Total de Compras', value: `${duplicatas.length}`, inline: false }
+            );
+
+          // Adiciona cada compra ao embed
+          duplicatas.forEach((compra, index) => {
+            embed.addFields({
+              name: `🔰 Compra ${index + 1}`,
+              value: `**Produto:** ${compra.nome_produto}\n**Preço:** R$ ${compra.preco}`,
+              inline: false
+            });
+          });
+
+          // Adiciona o valor total
+          const valorTotal = duplicatas.reduce((total, compra) => total + compra.preco_decimal, 0);
+          embed.addFields({
+            name: '💰 Valor Total',
+            value: `R$ ${valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            inline: false
+          });
+
+          embed.setFooter({ text: 'Última atualização' })
+               .setTimestamp();
+
+          await interaction.editReply({ embeds: [embed], ephemeral: true });
+        } catch (error) {
+          console.error('Erro ao buscar compras:', error);
+          await interaction.editReply({
+            embeds: [criarEmbedErro('Ocorreu um erro ao buscar as compras.')],
+            ephemeral: true
+          });
+        }
+      }
     }
     
     // Tratamento de botões 

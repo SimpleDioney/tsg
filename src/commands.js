@@ -120,4 +120,25 @@ async function handleAutoLink(interaction) {
       ephemeral: true
     });
   }
-} 
+}
+
+// Comando /relatorio
+const relatorioCommand = new SlashCommandBuilder()
+  .setName('relatorio')
+  .setDescription('Mostra um relatório com a quantidade de usuários em cada plano');
+
+// Comando /compras
+const comprasCommand = new SlashCommandBuilder()
+  .setName('compras')
+  .setDescription('Mostra o histórico de compras de um email')
+  .addStringOption(option =>
+    option.setName('email')
+      .setDescription('Email do usuário')
+      .setRequired(true));
+
+// Adiciona os novos comandos ao array
+const commands = [
+  // ... existing commands ...
+  relatorioCommand,
+  comprasCommand
+]; 
