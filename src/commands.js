@@ -122,7 +122,7 @@ async function handleAutoLink(interaction) {
       ephemeral: true
     });
   }
-}
+} 
 
 // Comando /registro
 const registroCommand = new SlashCommandBuilder()

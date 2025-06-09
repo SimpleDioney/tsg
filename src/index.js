@@ -2137,11 +2137,11 @@ async function handleRelatorio(interaction) {
       .setDescription(`Total de membros no servidor: ${guild.memberCount}`);
 
     // Adiciona cada cargo ao embed
-    for (const role of cargos) {
+    for (const [roleId, role] of cargos) {
       try {
         // Conta membros manualmente
-        const memberCount = members.filter(member => member.roles.cache.has(role.id)).size;
-        console.log(`[DEBUG] Cargo ${role.name} (${role.id}): ${memberCount} membros`);
+        const memberCount = members.filter(member => member.roles.cache.has(roleId)).size;
+        console.log(`[DEBUG] Cargo ${role.name} (${roleId}): ${memberCount} membros`);
 
         if (!role.name) {
           console.log(`[DEBUG] Cargo sem nome encontrado:`, role);
