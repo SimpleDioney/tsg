@@ -175,12 +175,14 @@ const verificarPermissoesCommand = new SlashCommandBuilder()
 // Comando /tutorial
 const tutorialCommand = new SlashCommandBuilder()
   .setName('tutorial')
-  .setDescription('Mostra um tutorial com os comandos disponíveis');
+  .setDescription('Mostra um tutorial com os comandos disponíveis')
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator);
 
 // Comando /restringir
 const restringirCommand = new SlashCommandBuilder()
   .setName('restringir')
-  .setDescription('Restringe o envio de links no canal atual (apenas Dev)');
+  .setDescription('Restringe o envio de links no canal atual (apenas Dev)')
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator);
 
 // Comando /relatorio
 const relatorioCommand = new SlashCommandBuilder()

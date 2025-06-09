@@ -31,6 +31,8 @@ const db = require('./database');
 const customerDb = require('./customerDatabase');
 const traySync = require('./traySync');
 const sheetSync = require('./sheetSync');
+
+// Importa os comandos do arquivo commands.js
 const { commands } = require('./commands');
 
 // Inicializa os bancos de dados
