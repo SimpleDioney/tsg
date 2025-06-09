@@ -2124,12 +2124,6 @@ async function handleRelatorio(interaction) {
       .filter(role => role.name !== '@everyone')
       .sort((a, b) => b.position - a.position);
 
-    console.log('[DEBUG] Cargos encontrados:', cargos.map(role => ({
-      id: role.id,
-      name: role.name,
-      position: role.position
-    })));
-
     // Cria o embed com as estatísticas
     const embed = new EmbedBuilder()
       .setTitle('📊 Relatório de Membros por Cargo')
@@ -2141,17 +2135,16 @@ async function handleRelatorio(interaction) {
       try {
         // Conta membros manualmente
         const memberCount = members.filter(member => member.roles.cache.has(roleId)).size;
-        console.log(`[DEBUG] Cargo ${role.name} (${roleId}): ${memberCount} membros`);
-
-        if (!role.name) {
-          console.log(`[DEBUG] Cargo sem nome encontrado:`, role);
-          continue;
-        }
+        
+        // Cria um embed separado para cada cargo
+        const roleEmbed = new EmbedBuilder()
+          .setColor(role.color || '#2b2d31')
+          .setDescription(`${role} - ${memberCount} membros`);
 
         embed.addFields({ 
-          name: role.name, 
-          value: `${memberCount} membros`, 
-          inline: true 
+          name: '\u200B', // Espaço invisível para separar os embeds
+          value: roleEmbed.data.description,
+          inline: false
         });
       } catch (error) {
         console.error(`[ERRO] Erro ao buscar membros do cargo ${role?.name || 'desconhecido'}:`, error);
