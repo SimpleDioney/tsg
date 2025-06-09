@@ -217,7 +217,7 @@ async function criarEmbedInfoUsuario(emailData) {
   const embed = new EmbedBuilder()
     .setColor(0x9B59B6) // Roxo
     .setTitle('ℹ️ Informações de Registro')
-    .setDescription(`**Detalhes do seu registro atual:**`)
+    .setDescription('**Detalhes do seu registro atual:**')
     .addFields(
       { name: '📧 E-mail', value: `\`${emailData.email}\``, inline: true },
       { name: '🕒 Data de Registro', value: `<t:${timestamp}:F>`, inline: false },
@@ -2417,10 +2417,10 @@ async function handleInfoButton(interaction) {
     }
     
     const embed = await criarEmbedInfoUsuario(emailData);
-    return interaction.editReply({ embeds: [embed], ephemeral: true });
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error('[ERRO] Erro ao processar botão de informações:', error);
-    return interaction.editReply({
+    await interaction.editReply({
       content: '❌ Ocorreu um erro ao buscar suas informações. Por favor, tente novamente mais tarde.',
       ephemeral: true
     });
