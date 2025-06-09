@@ -2114,7 +2114,6 @@ async function handleRelatorio(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
     const guild = interaction.guild;
-    await guild.members.fetch();
 
     // Busca todos os cargos do servidor
     const cargos = guild.roles.cache
@@ -2128,13 +2127,24 @@ async function handleRelatorio(interaction) {
       .setDescription(`Total de membros no servidor: ${guild.memberCount}`);
 
     // Adiciona cada cargo ao embed
-    cargos.forEach(role => {
-      embed.addFields({ 
-        name: role.name, 
-        value: `${role.members.size} membros`, 
-        inline: true 
-      });
-    });
+    for (const role of cargos) {
+      try {
+        // Busca os membros do cargo de forma paginada
+        const members = await role.members.fetch();
+        embed.addFields({ 
+          name: role.name, 
+          value: `${members.size} membros`, 
+          inline: true 
+        });
+      } catch (error) {
+        console.error(`[ERRO] Erro ao buscar membros do cargo ${role.name}:`, error);
+        embed.addFields({ 
+          name: role.name, 
+          value: 'Erro ao buscar membros', 
+          inline: true 
+        });
+      }
+    }
 
     return interaction.editReply({ embeds: [embed], ephemeral: true });
   } catch (error) {
