@@ -2131,24 +2131,30 @@ async function handleRelatorio(interaction) {
       });
     }
 
+    // Busca todos os membros do servidor
+    const guild = interaction.guild;
+    const members = await guild.members.fetch();
+    const totalMembros = members.size;
+
     const emails = emailsResult.data;
     const planos = planosResult.data;
 
     // Conta usuários por plano
     const usuariosPorPlano = {};
-    let usuariosSemPlano = 0;
+    let usuariosSemPlano = totalMembros; // Começa com o total de membros
 
     // Inicializa o contador para cada plano
     planos.forEach(plano => {
       usuariosPorPlano[plano.name] = 0;
     });
 
+    // Mapa de email para plano
+    const emailToPlano = new Map();
+
+    // Processa cada email registrado
     for (const email of emails) {
       const compras = await sheetSync.buscarDuplicatasEmail(email.email);
-      if (!compras || compras.length === 0) {
-        usuariosSemPlano++;
-        continue;
-      }
+      if (!compras || compras.length === 0) continue;
 
       // Ordena as compras por preço (maior primeiro)
       compras.sort((a, b) => b.preco_decimal - a.preco_decimal);
@@ -2158,17 +2164,21 @@ async function handleRelatorio(interaction) {
       const plano = planos.find(p => p.name === nomePlanoNormalizado);
 
       if (plano) {
-        usuariosPorPlano[plano.name]++;
-      } else {
-        usuariosSemPlano++;
+        emailToPlano.set(email.email, plano.name);
       }
+    }
+
+    // Conta os usuários por plano
+    for (const [email, planoNome] of emailToPlano) {
+      usuariosPorPlano[planoNome]++;
+      usuariosSemPlano--; // Subtrai do total de usuários sem plano
     }
 
     // Cria o embed com as estatísticas
     const embed = new EmbedBuilder()
       .setTitle('📊 Relatório de Usuários por Plano')
       .setColor('#2b2d31')
-      .setDescription(`Total de usuários registrados: ${emails.length}`)
+      .setDescription(`Total de membros no servidor: ${totalMembros}\nTotal de emails registrados: ${emails.length}`)
       .addFields(
         { name: '👥 Usuários sem plano', value: usuariosSemPlano.toString(), inline: false }
       );
