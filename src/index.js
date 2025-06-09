@@ -2129,11 +2129,10 @@ async function handleRelatorio(interaction) {
     // Adiciona cada cargo ao embed
     for (const role of cargos) {
       try {
-        // Busca os membros do cargo de forma paginada
-        const members = await role.members.fetch();
+        // Usa a propriedade members.size diretamente
         embed.addFields({ 
           name: role.name, 
-          value: `${members.size} membros`, 
+          value: `${role.members.size} membros`, 
           inline: true 
         });
       } catch (error) {
