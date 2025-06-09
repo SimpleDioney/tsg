@@ -2148,12 +2148,15 @@ async function handleRelatorio(interaction) {
       usuariosPorPlano[plano.name] = 0;
     });
 
-    // Mapa de email para plano
-    const emailToPlano = new Map();
+    // Busca todas as compras de uma vez
+    const comprasPromises = emails.map(email => sheetSync.buscarDuplicatasEmail(email.email));
+    const comprasResults = await Promise.all(comprasPromises);
 
-    // Processa cada email registrado
-    for (const email of emails) {
-      const compras = await sheetSync.buscarDuplicatasEmail(email.email);
+    // Processa os resultados
+    for (let i = 0; i < emails.length; i++) {
+      const email = emails[i];
+      const compras = comprasResults[i];
+
       if (!compras || compras.length === 0) continue;
 
       // Ordena as compras por preço (maior primeiro)
@@ -2164,14 +2167,9 @@ async function handleRelatorio(interaction) {
       const plano = planos.find(p => p.name === nomePlanoNormalizado);
 
       if (plano) {
-        emailToPlano.set(email.email, plano.name);
+        usuariosPorPlano[plano.name]++;
+        usuariosSemPlano--; // Subtrai do total de usuários sem plano
       }
-    }
-
-    // Conta os usuários por plano
-    for (const [email, planoNome] of emailToPlano) {
-      usuariosPorPlano[planoNome]++;
-      usuariosSemPlano--; // Subtrai do total de usuários sem plano
     }
 
     // Cria o embed com as estatísticas
