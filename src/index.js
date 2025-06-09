@@ -289,7 +289,7 @@ async function criarEmbedInfoUsuario(emailData) {
   embed.setFooter({ text: 'Para desvincular seu email, use o comando /desvincular' })
        .setTimestamp();
 
-  return embed.toJSON();
+  return embed;
 }
 
 // Função para criar embed de erro de cliente não encontrado
@@ -1515,9 +1515,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             });
           }
           
-          const embedData = await criarEmbedInfoUsuario(emailData.data);
-          const embed = new EmbedBuilder(embedData);
-          
+          const embed = await criarEmbedInfoUsuario(emailData.data);
           await interaction.editReply({
             embeds: [embed]
           });
