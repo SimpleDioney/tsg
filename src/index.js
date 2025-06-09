@@ -2138,6 +2138,11 @@ async function handleRelatorio(interaction) {
     const usuariosPorPlano = {};
     let usuariosSemPlano = 0;
 
+    // Inicializa o contador para cada plano
+    planos.forEach(plano => {
+      usuariosPorPlano[plano.name] = 0;
+    });
+
     for (const email of emails) {
       const compras = await sheetSync.buscarDuplicatasEmail(email.email);
       if (!compras || compras.length === 0) {
@@ -2146,14 +2151,14 @@ async function handleRelatorio(interaction) {
       }
 
       // Ordena as compras por preço (maior primeiro)
-      compras.sort((a, b) => b.preco - a.preco);
+      compras.sort((a, b) => b.preco_decimal - a.preco_decimal);
       const planoMaiorPreco = compras[0];
 
       const nomePlanoNormalizado = sheetSync.getNormalizedPlanName(planoMaiorPreco.nome_produto);
       const plano = planos.find(p => p.name === nomePlanoNormalizado);
 
       if (plano) {
-        usuariosPorPlano[plano.name] = (usuariosPorPlano[plano.name] || 0) + 1;
+        usuariosPorPlano[plano.name]++;
       } else {
         usuariosSemPlano++;
       }
@@ -2208,10 +2213,10 @@ async function handleCompras(interaction) {
     }
 
     // Ordena as compras por preço (maior primeiro)
-    compras.sort((a, b) => b.preco - a.preco);
+    compras.sort((a, b) => b.preco_decimal - a.preco_decimal);
 
     // Calcula o valor total
-    const valorTotal = compras.reduce((total, compra) => total + compra.preco, 0);
+    const valorTotal = compras.reduce((total, compra) => total + compra.preco_decimal, 0);
 
     // Cria o embed com as compras
     const embed = new EmbedBuilder()
@@ -2227,7 +2232,7 @@ async function handleCompras(interaction) {
     compras.forEach((compra, index) => {
       embed.addFields({
         name: `Compra ${index + 1}`,
-        value: `Produto: ${compra.nome_produto}\nPreço: R$ ${compra.preco.toFixed(2)}`,
+        value: `Produto: ${compra.nome_produto}\nPreço: R$ ${compra.preco_decimal.toFixed(2)}`,
         inline: false
       });
     });
