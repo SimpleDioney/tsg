@@ -182,7 +182,7 @@ function criarEmbedErroDesvincular() {
 }
 
 // Função para criar embed de informações do usuário
-function criarEmbedInfoUsuario(emailData) {
+async function criarEmbedInfoUsuario(emailData) {
   if (!emailData) {
     return criarEmbedErroDesvincular();
   }
@@ -243,46 +243,47 @@ function criarEmbedInfoUsuario(emailData) {
     );
   }
 
-  // Busca as compras do usuário
-  sheetSync.buscarDuplicatasEmail(emailData.email)
-    .then(compras => {
-      if (compras && compras.length > 0) {
-        // Ordena as compras por preço (maior primeiro)
-        compras.sort((a, b) => b.preco_decimal - a.preco_decimal);
+  try {
+    // Busca as compras do usuário
+    const compras = await sheetSync.buscarDuplicatasEmail(emailData.email);
+    console.log('[DEBUG] Compras encontradas:', compras);
 
-        // Calcula o valor total
-        const valorTotal = compras.reduce((total, compra) => total + compra.preco_decimal, 0);
+    if (compras && compras.length > 0) {
+      // Ordena as compras por preço (maior primeiro)
+      compras.sort((a, b) => b.preco_decimal - a.preco_decimal);
 
-        embed.addFields(
-          { name: '🛒 Histórico de Compras', value: '───────────────────', inline: false },
-          { name: '📦 Total de Compras', value: compras.length.toString(), inline: true },
-          { name: '💰 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: true }
-        );
+      // Calcula o valor total
+      const valorTotal = compras.reduce((total, compra) => total + compra.preco_decimal, 0);
 
-        // Adiciona cada compra ao embed
-        compras.forEach((compra, index) => {
-          embed.addFields({
-            name: `Compra ${index + 1}`,
-            value: `Produto: ${compra.nome_produto}\nPreço: R$ ${compra.preco_decimal.toFixed(2)}`,
-            inline: false
-          });
-        });
-      } else {
+      embed.addFields(
+        { name: '🛒 Histórico de Compras', value: '───────────────────', inline: false },
+        { name: '📦 Total de Compras', value: compras.length.toString(), inline: true },
+        { name: '💰 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: true }
+      );
+
+      // Adiciona cada compra ao embed
+      compras.forEach((compra, index) => {
         embed.addFields({
-          name: '🛒 Histórico de Compras',
-          value: 'Nenhuma compra encontrada',
+          name: `Compra ${index + 1}`,
+          value: `Produto: ${compra.nome_produto}\nPreço: R$ ${compra.preco_decimal.toFixed(2)}`,
           inline: false
         });
-      }
-    })
-    .catch(error => {
-      console.error('[ERRO] Erro ao buscar compras:', error);
+      });
+    } else {
       embed.addFields({
         name: '🛒 Histórico de Compras',
-        value: 'Erro ao buscar compras',
+        value: 'Nenhuma compra encontrada',
         inline: false
       });
+    }
+  } catch (error) {
+    console.error('[ERRO] Erro ao buscar compras:', error);
+    embed.addFields({
+      name: '🛒 Histórico de Compras',
+      value: 'Erro ao buscar compras',
+      inline: false
     });
+  }
   
   // Finaliza o embed
   embed.setFooter({ text: 'Para desvincular seu email, use o comando /desvincular' })
@@ -2395,6 +2396,32 @@ async function handleAutoLink(interaction) {
     console.error('[ERRO] Erro no comando auto-link:', error);
     return interaction.followUp({
       content: '❌ Ocorreu um erro ao processar o comando. Por favor, tente novamente mais tarde.',
+      ephemeral: true
+    });
+  }
+}
+
+// Handler para o botão de informações
+async function handleInfoButton(interaction) {
+  try {
+    await interaction.deferReply({ ephemeral: true });
+    
+    const userId = interaction.user.id;
+    const emailData = db.getUserEmail(userId);
+    
+    if (!emailData) {
+      return interaction.editReply({
+        embeds: [criarEmbedErroSemEmail()],
+        ephemeral: true
+      });
+    }
+    
+    const embed = await criarEmbedInfoUsuario(emailData);
+    return interaction.editReply({ embeds: [embed], ephemeral: true });
+  } catch (error) {
+    console.error('[ERRO] Erro ao processar botão de informações:', error);
+    return interaction.editReply({
+      content: '❌ Ocorreu um erro ao buscar suas informações. Por favor, tente novamente mais tarde.',
       ephemeral: true
     });
   }
