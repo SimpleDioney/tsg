@@ -2124,6 +2124,12 @@ async function handleRelatorio(interaction) {
       .filter(role => role.name !== '@everyone')
       .sort((a, b) => b.position - a.position);
 
+    console.log('[DEBUG] Cargos encontrados:', cargos.map(role => ({
+      id: role.id,
+      name: role.name,
+      position: role.position
+    })));
+
     // Cria o embed com as estatísticas
     const embed = new EmbedBuilder()
       .setTitle('📊 Relatório de Membros por Cargo')
@@ -2135,16 +2141,20 @@ async function handleRelatorio(interaction) {
       try {
         // Conta membros manualmente
         const memberCount = members.filter(member => member.roles.cache.has(roleId)).size;
-        
-        // Cria um embed separado para cada cargo
-        const roleEmbed = new EmbedBuilder()
-          .setColor(role.color || '#2b2d31')
-          .setDescription(`${role} - ${memberCount} membros`);
+        console.log(`[DEBUG] Cargo ${role.name} (${roleId}): ${memberCount} membros`);
 
+        if (!role.name) {
+          console.log(`[DEBUG] Cargo sem nome encontrado:`, role);
+          continue;
+        }
+
+        // Usa a cor do cargo ou uma cor padrão se não tiver
+        const roleColor = role.hexColor === '#000000' ? '#2b2d31' : role.hexColor;
+        
         embed.addFields({ 
-          name: '\u200B', // Espaço invisível para separar os embeds
-          value: roleEmbed.data.description,
-          inline: false
+          name: `${role}`, 
+          value: `${memberCount} membros`, 
+          inline: true 
         });
       } catch (error) {
         console.error(`[ERRO] Erro ao buscar membros do cargo ${role?.name || 'desconhecido'}:`, error);
@@ -2225,3 +2235,154 @@ async function handleCompras(interaction) {
     });
   }
 }
+
+// Handler para o comando /meu-email
+async function handleMeuEmail(interaction) {
+  try {
+    await interaction.deferReply({ ephemeral: true });
+
+    const userId = interaction.user.id;
+    const user = await User.findOne({ discordId: userId });
+
+    if (!user) {
+      return interaction.editReply({
+        content: '❌ Você ainda não tem um email registrado. Use `/registrar` para criar sua conta.',
+        ephemeral: true
+      });
+    }
+
+    // Busca as compras do usuário
+    const compras = await Compra.find({ userId: user._id })
+      .sort({ data: -1 })
+      .limit(5);
+
+    const embed = new EmbedBuilder()
+      .setTitle('📧 Informações da Sua Conta')
+      .setColor('#2b2d31')
+      .addFields(
+        { name: '📧 Email', value: user.email, inline: false },
+        { name: '💰 Saldo', value: `${user.saldo.toFixed(2)} G3X`, inline: true },
+        { name: '📅 Data de Registro', value: new Date(user.createdAt).toLocaleDateString('pt-BR'), inline: true }
+      );
+
+    // Adiciona as últimas compras se existirem
+    if (compras.length > 0) {
+      const comprasText = compras.map(compra => {
+        const status = compra.status === 'aprovado' ? '✅' : 
+                      compra.status === 'pendente' ? '⏳' : '❌';
+        return `${status} ${compra.quantidade} G3X - ${new Date(compra.data).toLocaleDateString('pt-BR')}`;
+      }).join('\n');
+
+      embed.addFields({ 
+        name: '🛒 Últimas Compras', 
+        value: comprasText || 'Nenhuma compra realizada',
+        inline: false 
+      });
+    }
+
+    return interaction.editReply({ embeds: [embed], ephemeral: true });
+  } catch (error) {
+    console.error('[ERRO] Erro no comando meu-email:', error);
+    return interaction.editReply({
+      content: '❌ Ocorreu um erro ao processar o comando. Por favor, tente novamente mais tarde.',
+      ephemeral: true
+    });
+  }
+}
+
+// Registra os comandos
+const commands = [
+  {
+    name: 'registrar',
+    description: 'Registra seu email para receber G3X',
+    options: [
+      {
+        name: 'email',
+        description: 'Seu email',
+        type: 3,
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'meu-email',
+    description: 'Mostra seu email registrado e saldo'
+  },
+  {
+    name: 'comprar',
+    description: 'Compra G3X',
+    options: [
+      {
+        name: 'quantidade',
+        description: 'Quantidade de G3X',
+        type: 4,
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'relatorio',
+    description: 'Mostra relatório de membros por cargo'
+  },
+  {
+    name: 'verificar-email',
+    description: 'Verifica se um email está registrado',
+    default_member_permissions: '8', // Permissão de Administrador
+    options: [
+      {
+        name: 'email',
+        description: 'Email para verificar',
+        type: 3,
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'tutorial',
+    description: 'Mostra o tutorial do bot',
+    default_member_permissions: '8' // Permissão de Administrador
+  },
+  {
+    name: 'config-plano',
+    description: 'Configura um plano',
+    default_member_permissions: '8', // Permissão de Administrador
+    options: [
+      {
+        name: 'nome',
+        description: 'Nome do plano',
+        type: 3,
+        required: true
+      },
+      {
+        name: 'cargo',
+        description: 'ID do cargo',
+        type: 3,
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'restringir',
+    description: 'Restringe um canal para um plano',
+    default_member_permissions: '8', // Permissão de Administrador
+    options: [
+      {
+        name: 'canal',
+        description: 'Canal para restringir',
+        type: 7,
+        required: true
+      },
+      {
+        name: 'plano',
+        description: 'Nome do plano',
+        type: 3,
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'verificar-permissoes',
+    description: 'Verifica as permissões do bot',
+    default_member_permissions: '8' // Permissão de Administrador
+  }
+];
