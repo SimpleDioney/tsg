@@ -2131,51 +2131,43 @@ async function handleRelatorio(interaction) {
       });
     }
 
-    // Busca o total de membros do servidor
     const guild = interaction.guild;
-    const totalMembros = guild.memberCount;
+    await guild.members.fetch(); // Garante que todos os membros sejam carregados
 
-    const emails = emailsResult.data;
-    const planos = planosResult.data;
+    // Busca os cargos dos planos
+    const cargosPlanos = guild.roles.cache
+      .filter(role => planosResult.data.some(plano => plano.discord_role_id === role.id))
+      .sort((a, b) => b.position - a.position);
 
-    // Conta usuários por plano
+    // Conta membros por cargo
     const usuariosPorPlano = {};
-    let usuariosSemPlano = totalMembros; // Começa com o total de membros
+    let usuariosSemPlano = guild.memberCount;
 
     // Inicializa o contador para cada plano
-    planos.forEach(plano => {
+    planosResult.data.forEach(plano => {
       usuariosPorPlano[plano.name] = 0;
     });
 
-    // Busca todos os membros do servidor
-    const members = await guild.members.fetch();
-
-    // Processa cada email registrado
-    for (const email of emails) {
-      const member = members.get(email.user_id);
-      if (!member) continue;
-
-      // Verifica os cargos do membro
-      for (const plano of planos) {
-        if (plano.discord_role_id && member.roles.cache.has(plano.discord_role_id)) {
-          usuariosPorPlano[plano.name]++;
-          usuariosSemPlano--; // Subtrai do total de usuários sem plano
-          break; // Se encontrou um plano, não precisa verificar os outros
-        }
+    // Conta membros em cada cargo de plano
+    cargosPlanos.forEach(role => {
+      const plano = planosResult.data.find(p => p.discord_role_id === role.id);
+      if (plano) {
+        usuariosPorPlano[plano.name] = role.members.size;
+        usuariosSemPlano -= role.members.size;
       }
-    }
+    });
 
     // Cria o embed com as estatísticas
     const embed = new EmbedBuilder()
       .setTitle('📊 Relatório de Usuários por Plano')
       .setColor('#2b2d31')
-      .setDescription(`Total de membros no servidor: ${totalMembros}\nTotal de emails registrados: ${emails.length}`)
+      .setDescription(`Total de membros no servidor: ${guild.memberCount}\nTotal de emails registrados: ${emailsResult.data.length}`)
       .addFields(
         { name: '👥 Usuários sem plano', value: usuariosSemPlano.toString(), inline: false }
       );
 
     // Adiciona cada plano ao embed
-    for (const plano of planos) {
+    for (const plano of planosResult.data) {
       const quantidade = usuariosPorPlano[plano.name] || 0;
       embed.addFields({ name: plano.name, value: quantidade.toString(), inline: true });
     }
