@@ -2161,11 +2161,11 @@ async function handleRelatorio(interaction) {
       const email = emails.find(e => e.user_id === vinculo.user_id);
       if (!email) continue;
 
-      // Busca o plano do usuário
-      const planoResult = await customerDb.getPlanByUserId(vinculo.user_id);
-      if (!planoResult.success || !planoResult.data) continue;
+      // Busca o cliente pelo email
+      const clienteResult = customerDb.getCustomerByEmail(email.email);
+      if (!clienteResult.success || !clienteResult.data.Customer.Plan) continue;
 
-      const plano = planos.find(p => p.id === planoResult.data.plan_id);
+      const plano = planos.find(p => p.id === clienteResult.data.Customer.Plan.id);
       if (plano) {
         usuariosPorPlano[plano.name]++;
         usuariosSemPlano--; // Subtrai do total de usuários sem plano
