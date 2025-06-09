@@ -2115,6 +2115,9 @@ async function handleRelatorio(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
     const guild = interaction.guild;
+    
+    // Garante que todos os membros estão carregados
+    await guild.members.fetch();
 
     // Busca todos os cargos do servidor
     const cargos = guild.roles.cache
@@ -2130,16 +2133,17 @@ async function handleRelatorio(interaction) {
     // Adiciona cada cargo ao embed
     for (const role of cargos) {
       try {
-        // Usa a propriedade members.size diretamente
+        const memberCount = role.members?.size ?? 0;
+
         embed.addFields({ 
-          name: role.name, 
-          value: `${role.members.size} membros`, 
+          name: role.name ?? 'Cargo desconhecido', 
+          value: `${memberCount} membros`, 
           inline: true 
         });
       } catch (error) {
-        console.error(`[ERRO] Erro ao buscar membros do cargo ${role.name}:`, error);
+        console.error(`[ERRO] Erro ao buscar membros do cargo ${role?.name || 'desconhecido'}:`, error);
         embed.addFields({ 
-          name: role.name, 
+          name: role?.name ?? 'Cargo desconhecido', 
           value: 'Erro ao buscar membros', 
           inline: true 
         });
