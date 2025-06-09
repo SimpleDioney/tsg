@@ -2117,12 +2117,18 @@ async function handleRelatorio(interaction) {
     const guild = interaction.guild;
     
     // Garante que todos os membros estão carregados
-    await guild.members.fetch();
-
+    const members = await guild.members.fetch();
+    
     // Busca todos os cargos do servidor
     const cargos = guild.roles.cache
       .filter(role => role.name !== '@everyone')
       .sort((a, b) => b.position - a.position);
+
+    console.log('[DEBUG] Cargos encontrados:', cargos.map(role => ({
+      id: role.id,
+      name: role.name,
+      position: role.position
+    })));
 
     // Cria o embed com as estatísticas
     const embed = new EmbedBuilder()
@@ -2133,20 +2139,29 @@ async function handleRelatorio(interaction) {
     // Adiciona cada cargo ao embed
     for (const role of cargos) {
       try {
-        const memberCount = role.members?.size ?? 0;
+        // Conta membros manualmente
+        const memberCount = members.filter(member => member.roles.cache.has(role.id)).size;
+        console.log(`[DEBUG] Cargo ${role.name} (${role.id}): ${memberCount} membros`);
+
+        if (!role.name) {
+          console.log(`[DEBUG] Cargo sem nome encontrado:`, role);
+          continue;
+        }
 
         embed.addFields({ 
-          name: role.name ?? 'Cargo desconhecido', 
+          name: role.name, 
           value: `${memberCount} membros`, 
           inline: true 
         });
       } catch (error) {
         console.error(`[ERRO] Erro ao buscar membros do cargo ${role?.name || 'desconhecido'}:`, error);
-        embed.addFields({ 
-          name: role?.name ?? 'Cargo desconhecido', 
-          value: 'Erro ao buscar membros', 
-          inline: true 
-        });
+        if (role?.name) {
+          embed.addFields({ 
+            name: role.name, 
+            value: 'Erro ao buscar membros', 
+            inline: true 
+          });
+        }
       }
     }
 
