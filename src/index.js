@@ -2254,9 +2254,19 @@ async function handleMeuEmail(interaction) {
     }
 
     // Busca as compras do usuário
-    const compras = await Compra.find({ userId: user._id })
-      .sort({ data: -1 })
-      .limit(5);
+    const compras = await sheetSync.buscarDuplicatasEmail(user.email);
+    if (!compras || compras.length === 0) {
+      return interaction.editReply({
+        content: '❌ Nenhuma compra encontrada para este email.',
+        ephemeral: true
+      });
+    }
+
+    // Ordena as compras por preço (maior primeiro)
+    compras.sort((a, b) => b.preco_decimal - a.preco_decimal);
+
+    // Calcula o valor total
+    const valorTotal = compras.reduce((total, compra) => total + compra.preco_decimal, 0);
 
     const embed = new EmbedBuilder()
       .setTitle('📧 Informações da Sua Conta')
@@ -2264,23 +2274,19 @@ async function handleMeuEmail(interaction) {
       .addFields(
         { name: '📧 Email', value: user.email, inline: false },
         { name: '💰 Saldo', value: `${user.saldo.toFixed(2)} G3X`, inline: true },
-        { name: '📅 Data de Registro', value: new Date(user.createdAt).toLocaleDateString('pt-BR'), inline: true }
+        { name: '📅 Data de Registro', value: new Date(user.createdAt).toLocaleDateString('pt-BR'), inline: true },
+        { name: '📦 Total de Compras', value: compras.length.toString(), inline: true },
+        { name: '💰 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: true }
       );
 
-    // Adiciona as últimas compras se existirem
-    if (compras.length > 0) {
-      const comprasText = compras.map(compra => {
-        const status = compra.status === 'aprovado' ? '✅' : 
-                      compra.status === 'pendente' ? '⏳' : '❌';
-        return `${status} ${compra.quantidade} G3X - ${new Date(compra.data).toLocaleDateString('pt-BR')}`;
-      }).join('\n');
-
-      embed.addFields({ 
-        name: '🛒 Últimas Compras', 
-        value: comprasText || 'Nenhuma compra realizada',
-        inline: false 
+    // Adiciona cada compra ao embed
+    compras.forEach((compra, index) => {
+      embed.addFields({
+        name: `Compra ${index + 1}`,
+        value: `Produto: ${compra.nome_produto}\nPreço: R$ ${compra.preco_decimal.toFixed(2)}`,
+        inline: false
       });
-    }
+    });
 
     return interaction.editReply({ embeds: [embed], ephemeral: true });
   } catch (error) {

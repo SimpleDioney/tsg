@@ -209,7 +209,7 @@ const commands = [
   tutorialCommand,
   restringirCommand,
   relatorioCommand,
-  comprasCommand
+  autoLinkCommand
 ];
 
 // Exporta os comandos
