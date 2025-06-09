@@ -1504,18 +1504,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.showModal(modal);
       }
       else if (interaction.customId === 'comando_info') {
-        const emailData = await db.getUserEmail(interaction.user.id);
-        if (!emailData.success || !emailData.data) {
-          return interaction.reply({
-            embeds: [criarEmbedErroSemEmail()],
+        try {
+          await interaction.deferReply({ ephemeral: true });
+          
+          const emailData = await db.getUserEmail(interaction.user.id);
+          if (!emailData.success || !emailData.data) {
+            return interaction.editReply({
+              embeds: [criarEmbedErroSemEmail()],
+              ephemeral: true
+            });
+          }
+          
+          const embed = await criarEmbedInfoUsuario(emailData.data);
+          await interaction.editReply({
+            embeds: [embed]
+          });
+        } catch (error) {
+          console.error('[ERRO] Erro ao processar botão de informações:', error);
+          await interaction.editReply({
+            content: '❌ Ocorreu um erro ao buscar suas informações. Por favor, tente novamente mais tarde.',
             ephemeral: true
           });
         }
-        const embed = criarEmbedInfoUsuario(emailData.data);
-        await interaction.reply({
-          embeds: [embed],
-          ephemeral: true
-        });
       }
       else if (interaction.customId === 'comando_desvincular') {
         const emailData = await db.getUserEmail(interaction.user.id);
@@ -2422,6 +2432,27 @@ async function handleInfoButton(interaction) {
     console.error('[ERRO] Erro ao processar botão de informações:', error);
     await interaction.editReply({
       content: '❌ Ocorreu um erro ao buscar suas informações. Por favor, tente novamente mais tarde.',
+      ephemeral: true
+    });
+  }
+}
+
+// Handler para o botão de tutorial
+async function handleTutorialButton(interaction) {
+  try {
+    await interaction.deferReply({ ephemeral: true });
+    
+    const embed = criarEmbedTutorial();
+    const botoes = criarBotoesTutorial();
+    
+    await interaction.editReply({
+      embeds: [embed],
+      components: [botoes]
+    });
+  } catch (error) {
+    console.error('[ERRO] Erro ao processar botão de tutorial:', error);
+    await interaction.editReply({
+      content: '❌ Ocorreu um erro ao mostrar o tutorial. Por favor, tente novamente mais tarde.',
       ephemeral: true
     });
   }
