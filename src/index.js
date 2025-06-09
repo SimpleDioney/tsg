@@ -1349,6 +1349,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       else if (commandName === 'compras') {
         await handleCompras(interaction);
       }
+
+      // Comando /auto-link
+      else if (commandName === 'auto-link') {
+        await handleAutoLink(interaction);
+      }
     }
     
     // Tratamento de botões 
@@ -2292,6 +2297,55 @@ async function handleMeuEmail(interaction) {
   } catch (error) {
     console.error('[ERRO] Erro no comando meu-email:', error);
     return interaction.editReply({
+      content: '❌ Ocorreu um erro ao processar o comando. Por favor, tente novamente mais tarde.',
+      ephemeral: true
+    });
+  }
+}
+
+// Handler para o comando /auto-link
+async function handleAutoLink(interaction) {
+  try {
+    console.log('[DEBUG] Iniciando comando auto-link...');
+    
+    // Verifica se o usuário tem permissões elevadas
+    if (!temPermissaoElevada(interaction.member)) {
+      console.log(`[DEBUG] Usuário ${interaction.user.id} não tem permissões elevadas`);
+      return interaction.reply({
+        content: '❌ Você não tem permissão para usar este comando.',
+        ephemeral: true
+      });
+    }
+
+    // Envia uma mensagem inicial
+    await interaction.reply({
+      content: '🔄 Iniciando vinculação automática de emails...',
+      ephemeral: true
+    });
+
+    // Executa a vinculação automática
+    const result = await db.autoLinkEmailsToCustomers();
+
+    if (!result.success) {
+      return interaction.followUp({
+        content: `❌ Erro ao executar vinculação automática: ${result.error}`,
+        ephemeral: true
+      });
+    }
+
+    const { total_emails, total_clientes, vinculacoes_criadas, erros } = result.data;
+
+    return interaction.followUp({
+      content: `✅ Vinculação automática concluída!\n\n` +
+               `📧 Total de emails registrados: ${total_emails}\n` +
+               `👥 Total de clientes na planilha: ${total_clientes}\n` +
+               `🔗 Vínculos criados: ${vinculacoes_criadas}\n` +
+               `❌ Erros: ${erros}`,
+      ephemeral: true
+    });
+  } catch (error) {
+    console.error('[ERRO] Erro no comando auto-link:', error);
+    return interaction.followUp({
       content: '❌ Ocorreu um erro ao processar o comando. Por favor, tente novamente mais tarde.',
       ephemeral: true
     });

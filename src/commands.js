@@ -122,7 +122,7 @@ async function handleAutoLink(interaction) {
       ephemeral: true
     });
   }
-} 
+}
 
 // Comando /registro
 const registroCommand = new SlashCommandBuilder()
@@ -197,6 +197,12 @@ const comprasCommand = new SlashCommandBuilder()
     option.setName('email')
       .setDescription('Email do usuário')
       .setRequired(true));
+
+// Comando /auto-link
+const autoLinkCommand = new SlashCommandBuilder()
+  .setName('auto-link')
+  .setDescription('Vincula automaticamente emails registrados com clientes [ADMIN]')
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator);
 
 // Array com todos os comandos
 const commands = [
