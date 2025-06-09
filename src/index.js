@@ -31,6 +31,7 @@ const db = require('./database');
 const customerDb = require('./customerDatabase');
 const traySync = require('./traySync');
 const sheetSync = require('./sheetSync');
+const { commands } = require('./commands');
 
 // Inicializa os bancos de dados
 db.initDatabase();
@@ -686,52 +687,6 @@ const client = new Client({
   ]
 });
 
-// Array com os comandos slash
-const commands = [
-  new SlashCommandBuilder()
-    .setName('registro')
-    .setDescription('Registra seu e-mail no sistema'),
-  new SlashCommandBuilder()
-    .setName('meu-email')
-    .setDescription('Mostra o e-mail registrado em sua conta'),
-  new SlashCommandBuilder()
-    .setName('desvincular')
-    .setDescription('Remove seu e-mail do sistema'),
-  new SlashCommandBuilder()
-    .setName('verificar-email')
-    .setDescription('Verifica se um e-mail está na base de clientes')
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-    .addStringOption(option => 
-      option.setName('email')
-        .setDescription('O email que deseja verificar')
-        .setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('config-plano')
-    .setDescription('Configura o cargo de um plano [ADMIN]')
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-    .addStringOption(option => 
-      option.setName('plano_id')
-        .setDescription('Nome do plano') 
-        .setRequired(true)
-        .setAutocomplete(true)
-    )
-    .addRoleOption(option => 
-      option.setName('cargo')
-        .setDescription('Cargo Discord a ser associado ao plano')
-        .setRequired(true)
-    ),
-  new SlashCommandBuilder()
-    .setName('verificar-permissoes')
-    .setDescription('Verifica se o bot tem permissões para gerenciar cargos [ADMIN]')
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
-  new SlashCommandBuilder()
-    .setName('tutorial')
-    .setDescription('Mostra um tutorial com os comandos disponíveis'),
-  new SlashCommandBuilder()
-    .setName('restringir')
-    .setDescription('Restringe o envio de links no canal atual (apenas Dev)')
-];
-
 // Evento executado quando o bot estiver pronto
 client.once(Events.ClientReady, async (c) => {
   console.log(`Bot online! Logado como ${c.user.tag}`);
@@ -1384,167 +1339,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       // Comando /relatorio
       else if (commandName === 'relatorio') {
-        try {
-          // Verifica se o usuário tem permissão
-          if (!temPermissaoElevada(interaction.member)) {
-            return await interaction.reply({
-              embeds: [criarEmbedErroPermissao()],
-              ephemeral: true
-            });
-          }
-
-          await interaction.deferReply({ ephemeral: true });
-
-          // Busca todos os emails registrados
-          const emailsResult = db.getAllEmails();
-          if (!emailsResult.success) {
-            return await interaction.editReply({
-              embeds: [criarEmbedErro('Erro ao buscar emails registrados.')],
-              ephemeral: true
-            });
-          }
-
-          // Busca todos os planos configurados
-          const planosResult = customerDb.getAllPlans();
-          if (!planosResult.success) {
-            return await interaction.editReply({
-              embeds: [criarEmbedErro('Erro ao buscar planos configurados.')],
-              ephemeral: true
-            });
-          }
-
-          // Mapa para contar usuários por plano
-          const contagemPorPlano = new Map();
-          let usuariosSemPlano = 0;
-
-          // Inicializa o mapa com todos os planos
-          planosResult.data.forEach(plano => {
-            contagemPorPlano.set(plano.name, 0);
-          });
-
-          // Processa cada email registrado
-          for (const email of emailsResult.data) {
-            try {
-              // Busca as compras do email
-              const duplicatas = await sheetSync.buscarDuplicatasEmail(email.email);
-              
-              if (duplicatas && duplicatas.length > 0) {
-                // Ordena por preço (maior primeiro)
-                duplicatas.sort((a, b) => b.preco_decimal - a.preco_decimal);
-                
-                // Pega o plano de maior valor
-                const planoMaiorPreco = duplicatas[0];
-                const nomePlanoNormalizado = await sheetSync.getNormalizedPlanName(planoMaiorPreco.nome_produto);
-                
-                // Incrementa o contador do plano
-                const contagemAtual = contagemPorPlano.get(nomePlanoNormalizado) || 0;
-                contagemPorPlano.set(nomePlanoNormalizado, contagemAtual + 1);
-              } else {
-                usuariosSemPlano++;
-              }
-            } catch (error) {
-              console.error(`Erro ao processar email ${email.email}:`, error);
-              usuariosSemPlano++;
-            }
-          }
-
-          // Cria o embed com as estatísticas
-          const embed = new EmbedBuilder()
-            .setColor(0x1E90FF)
-            .setTitle('📊 Relatório de Planos')
-            .setDescription(`**Total de usuários registrados: ${emailsResult.data.length}**`)
-            .addFields(
-              { name: '👥 Usuários sem Plano', value: `${usuariosSemPlano}`, inline: false }
-            );
-
-          // Adiciona cada plano ao embed
-          for (const [plano, quantidade] of contagemPorPlano) {
-            if (quantidade > 0) {
-              embed.addFields({
-                name: `🔰 ${plano}`,
-                value: `${quantidade} usuário${quantidade !== 1 ? 's' : ''}`,
-                inline: true
-              });
-            }
-          }
-
-          embed.setFooter({ text: 'Última atualização' })
-               .setTimestamp();
-
-          await interaction.editReply({ embeds: [embed], ephemeral: true });
-        } catch (error) {
-          console.error('Erro ao gerar relatório:', error);
-          await interaction.editReply({
-            embeds: [criarEmbedErro('Ocorreu um erro ao gerar o relatório.')],
-            ephemeral: true
-          });
-        }
+        await handleRelatorio(interaction);
       }
 
       // Comando /compras
       else if (commandName === 'compras') {
-        try {
-          const email = interaction.options.getString('email');
-          
-          if (!email) {
-            return await interaction.reply({
-              embeds: [criarEmbedErro('Por favor, forneça um email válido.')],
-              ephemeral: true
-            });
-          }
-
-          await interaction.deferReply({ ephemeral: true });
-
-          // Busca as compras do email
-          const duplicatas = await sheetSync.buscarDuplicatasEmail(email);
-          
-          if (!duplicatas || duplicatas.length === 0) {
-            return await interaction.editReply({
-              embeds: [criarEmbedErro(`Nenhuma compra encontrada para o email: ${email}`)],
-              ephemeral: true
-            });
-          }
-
-          // Ordena por preço (maior primeiro)
-          duplicatas.sort((a, b) => b.preco_decimal - a.preco_decimal);
-
-          // Cria o embed com as compras
-          const embed = new EmbedBuilder()
-            .setColor(0x1E90FF)
-            .setTitle('🛍️ Histórico de Compras')
-            .setDescription(`**Compras encontradas para o email:** \`${email}\``)
-            .addFields(
-              { name: '📦 Total de Compras', value: `${duplicatas.length}`, inline: false }
-            );
-
-          // Adiciona cada compra ao embed
-          duplicatas.forEach((compra, index) => {
-            embed.addFields({
-              name: `🔰 Compra ${index + 1}`,
-              value: `**Produto:** ${compra.nome_produto}\n**Preço:** R$ ${compra.preco}`,
-              inline: false
-            });
-          });
-
-          // Adiciona o valor total
-          const valorTotal = duplicatas.reduce((total, compra) => total + compra.preco_decimal, 0);
-          embed.addFields({
-            name: '💰 Valor Total',
-            value: `R$ ${valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            inline: false
-          });
-
-          embed.setFooter({ text: 'Última atualização' })
-               .setTimestamp();
-
-          await interaction.editReply({ embeds: [embed], ephemeral: true });
-        } catch (error) {
-          console.error('Erro ao buscar compras:', error);
-          await interaction.editReply({
-            embeds: [criarEmbedErro('Ocorreu um erro ao buscar as compras.')],
-            ephemeral: true
-          });
-        }
+        await handleCompras(interaction);
       }
     }
     
@@ -2298,4 +2098,146 @@ function criarEmbedErroSemEmail() {
     )
     .setFooter({ text: 'Se acredita que isso é um erro, contate um administrador.' })
     .setTimestamp();
+}
+
+// Handler para o comando /relatorio
+async function handleRelatorio(interaction) {
+  try {
+    // Verifica se o usuário tem permissões elevadas
+    if (!temPermissaoElevada(interaction.member)) {
+      return interaction.reply({
+        content: '❌ Você não tem permissão para usar este comando.',
+        ephemeral: true
+      });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    // Busca todos os emails registrados
+    const emailsResult = await db.getAllEmails();
+    if (!emailsResult.success) {
+      return interaction.editReply({
+        content: '❌ Erro ao buscar emails registrados.',
+        ephemeral: true
+      });
+    }
+
+    // Busca todos os planos configurados
+    const planosResult = await customerDb.getAllPlans();
+    if (!planosResult.success) {
+      return interaction.editReply({
+        content: '❌ Erro ao buscar planos configurados.',
+        ephemeral: true
+      });
+    }
+
+    const emails = emailsResult.data;
+    const planos = planosResult.data;
+
+    // Conta usuários por plano
+    const usuariosPorPlano = {};
+    let usuariosSemPlano = 0;
+
+    for (const email of emails) {
+      const compras = await sheetSync.buscarDuplicatasEmail(email.email);
+      if (!compras || compras.length === 0) {
+        usuariosSemPlano++;
+        continue;
+      }
+
+      // Ordena as compras por preço (maior primeiro)
+      compras.sort((a, b) => b.preco - a.preco);
+      const planoMaiorPreco = compras[0];
+
+      const nomePlanoNormalizado = sheetSync.getNormalizedPlanName(planoMaiorPreco.nome_produto);
+      const plano = planos.find(p => p.name === nomePlanoNormalizado);
+
+      if (plano) {
+        usuariosPorPlano[plano.name] = (usuariosPorPlano[plano.name] || 0) + 1;
+      } else {
+        usuariosSemPlano++;
+      }
+    }
+
+    // Cria o embed com as estatísticas
+    const embed = new EmbedBuilder()
+      .setTitle('📊 Relatório de Usuários por Plano')
+      .setColor('#2b2d31')
+      .setDescription(`Total de usuários registrados: ${emails.length}`)
+      .addFields(
+        { name: '👥 Usuários sem plano', value: usuariosSemPlano.toString(), inline: false }
+      );
+
+    // Adiciona cada plano ao embed
+    for (const plano of planos) {
+      const quantidade = usuariosPorPlano[plano.name] || 0;
+      embed.addFields({ name: plano.name, value: quantidade.toString(), inline: true });
+    }
+
+    return interaction.editReply({ embeds: [embed], ephemeral: true });
+  } catch (error) {
+    console.error('[ERRO] Erro no comando relatorio:', error);
+    return interaction.editReply({
+      content: '❌ Ocorreu um erro ao processar o comando. Por favor, tente novamente mais tarde.',
+      ephemeral: true
+    });
+  }
+}
+
+// Handler para o comando /compras
+async function handleCompras(interaction) {
+  try {
+    const email = interaction.options.getString('email');
+
+    if (!email) {
+      return interaction.reply({
+        content: '❌ Por favor, forneça um email válido.',
+        ephemeral: true
+      });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    // Busca as compras do email
+    const compras = await sheetSync.buscarDuplicatasEmail(email);
+    if (!compras || compras.length === 0) {
+      return interaction.editReply({
+        content: '❌ Nenhuma compra encontrada para este email.',
+        ephemeral: true
+      });
+    }
+
+    // Ordena as compras por preço (maior primeiro)
+    compras.sort((a, b) => b.preco - a.preco);
+
+    // Calcula o valor total
+    const valorTotal = compras.reduce((total, compra) => total + compra.preco, 0);
+
+    // Cria o embed com as compras
+    const embed = new EmbedBuilder()
+      .setTitle('🛍️ Histórico de Compras')
+      .setColor('#2b2d31')
+      .setDescription(`Email: ${email}`)
+      .addFields(
+        { name: '📦 Total de Compras', value: compras.length.toString(), inline: true },
+        { name: '💰 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: true }
+      );
+
+    // Adiciona cada compra ao embed
+    compras.forEach((compra, index) => {
+      embed.addFields({
+        name: `Compra ${index + 1}`,
+        value: `Produto: ${compra.nome_produto}\nPreço: R$ ${compra.preco.toFixed(2)}`,
+        inline: false
+      });
+    });
+
+    return interaction.editReply({ embeds: [embed], ephemeral: true });
+  } catch (error) {
+    console.error('[ERRO] Erro no comando compras:', error);
+    return interaction.editReply({
+      content: '❌ Ocorreu um erro ao processar o comando. Por favor, tente novamente mais tarde.',
+      ephemeral: true
+    });
+  }
 }

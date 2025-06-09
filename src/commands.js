@@ -1,3 +1,5 @@
+const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
+
 // Comando para listar todos os vínculos (apenas para administradores)
 async function handleAdminVinculos(interaction) {
   try {
@@ -122,6 +124,64 @@ async function handleAutoLink(interaction) {
   }
 }
 
+// Comando /registro
+const registroCommand = new SlashCommandBuilder()
+  .setName('registro')
+  .setDescription('Registra seu e-mail no sistema');
+
+// Comando /meu-email
+const meuEmailCommand = new SlashCommandBuilder()
+  .setName('meu-email')
+  .setDescription('Mostra o e-mail registrado em sua conta');
+
+// Comando /desvincular
+const desvincularCommand = new SlashCommandBuilder()
+  .setName('desvincular')
+  .setDescription('Remove seu e-mail do sistema');
+
+// Comando /verificar-email
+const verificarEmailCommand = new SlashCommandBuilder()
+  .setName('verificar-email')
+  .setDescription('Verifica se um e-mail está na base de clientes')
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+  .addStringOption(option => 
+    option.setName('email')
+      .setDescription('O email que deseja verificar')
+      .setRequired(true));
+
+// Comando /config-plano
+const configPlanoCommand = new SlashCommandBuilder()
+  .setName('config-plano')
+  .setDescription('Configura o cargo de um plano [ADMIN]')
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+  .addStringOption(option => 
+    option.setName('plano_id')
+      .setDescription('Nome do plano') 
+      .setRequired(true)
+      .setAutocomplete(true)
+  )
+  .addRoleOption(option => 
+    option.setName('cargo')
+      .setDescription('Cargo Discord a ser associado ao plano')
+      .setRequired(true)
+  );
+
+// Comando /verificar-permissoes
+const verificarPermissoesCommand = new SlashCommandBuilder()
+  .setName('verificar-permissoes')
+  .setDescription('Verifica se o bot tem permissões para gerenciar cargos [ADMIN]')
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator);
+
+// Comando /tutorial
+const tutorialCommand = new SlashCommandBuilder()
+  .setName('tutorial')
+  .setDescription('Mostra um tutorial com os comandos disponíveis');
+
+// Comando /restringir
+const restringirCommand = new SlashCommandBuilder()
+  .setName('restringir')
+  .setDescription('Restringe o envio de links no canal atual (apenas Dev)');
+
 // Comando /relatorio
 const relatorioCommand = new SlashCommandBuilder()
   .setName('relatorio')
@@ -136,9 +196,21 @@ const comprasCommand = new SlashCommandBuilder()
       .setDescription('Email do usuário')
       .setRequired(true));
 
-// Adiciona os novos comandos ao array
+// Array com todos os comandos
 const commands = [
-  // ... existing commands ...
+  registroCommand,
+  meuEmailCommand,
+  desvincularCommand,
+  verificarEmailCommand,
+  configPlanoCommand,
+  verificarPermissoesCommand,
+  tutorialCommand,
+  restringirCommand,
   relatorioCommand,
   comprasCommand
-]; 
+];
+
+// Exporta os comandos
+module.exports = {
+  commands
+}; 
