@@ -223,7 +223,7 @@ function criarEmbedInfoUsuario(emailData) {
       { name: '🕒 Data de Registro', value: `<t:${timestamp}:F>`, inline: false },
       { name: '👤 ID do Usuário', value: `\`${emailData.user_id}\``, inline: false }
     );
-  
+
   // Adiciona informações do cliente se disponíveis
   if (clienteInfo) {
     embed.addFields(
@@ -242,11 +242,52 @@ function criarEmbedInfoUsuario(emailData) {
       { name: '📜 Descrição', value: `${planoInfo.description || 'Sem descrição adicional'}`, inline: false }
     );
   }
+
+  // Busca as compras do usuário
+  sheetSync.buscarDuplicatasEmail(emailData.email)
+    .then(compras => {
+      if (compras && compras.length > 0) {
+        // Ordena as compras por preço (maior primeiro)
+        compras.sort((a, b) => b.preco_decimal - a.preco_decimal);
+
+        // Calcula o valor total
+        const valorTotal = compras.reduce((total, compra) => total + compra.preco_decimal, 0);
+
+        embed.addFields(
+          { name: '🛒 Histórico de Compras', value: '───────────────────', inline: false },
+          { name: '📦 Total de Compras', value: compras.length.toString(), inline: true },
+          { name: '💰 Valor Total', value: `R$ ${valorTotal.toFixed(2)}`, inline: true }
+        );
+
+        // Adiciona cada compra ao embed
+        compras.forEach((compra, index) => {
+          embed.addFields({
+            name: `Compra ${index + 1}`,
+            value: `Produto: ${compra.nome_produto}\nPreço: R$ ${compra.preco_decimal.toFixed(2)}`,
+            inline: false
+          });
+        });
+      } else {
+        embed.addFields({
+          name: '🛒 Histórico de Compras',
+          value: 'Nenhuma compra encontrada',
+          inline: false
+        });
+      }
+    })
+    .catch(error => {
+      console.error('[ERRO] Erro ao buscar compras:', error);
+      embed.addFields({
+        name: '🛒 Histórico de Compras',
+        value: 'Erro ao buscar compras',
+        inline: false
+      });
+    });
   
   // Finaliza o embed
   embed.setFooter({ text: 'Para desvincular seu email, use o comando /desvincular' })
        .setTimestamp();
-  
+
   return embed;
 }
 
