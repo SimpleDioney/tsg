@@ -2147,28 +2147,21 @@ async function handleRelatorio(interaction) {
       usuariosPorPlano[plano.name] = 0;
     });
 
-    // Busca todos os vínculos
-    const vinculosResult = await db.getAllLinks();
-    if (!vinculosResult.success) {
-      return interaction.editReply({
-        content: '❌ Erro ao buscar vínculos.',
-        ephemeral: true
-      });
-    }
+    // Busca todos os membros do servidor
+    const members = await guild.members.fetch();
 
-    // Processa os vínculos
-    for (const vinculo of vinculosResult.data) {
-      const email = emails.find(e => e.user_id === vinculo.user_id);
-      if (!email) continue;
+    // Processa cada email registrado
+    for (const email of emails) {
+      const member = members.get(email.user_id);
+      if (!member) continue;
 
-      // Busca o cliente pelo email
-      const clienteResult = customerDb.getCustomerByEmail(email.email);
-      if (!clienteResult.success || !clienteResult.data.Customer.Plan) continue;
-
-      const plano = planos.find(p => p.id === clienteResult.data.Customer.Plan.id);
-      if (plano) {
-        usuariosPorPlano[plano.name]++;
-        usuariosSemPlano--; // Subtrai do total de usuários sem plano
+      // Verifica os cargos do membro
+      for (const plano of planos) {
+        if (plano.discord_role_id && member.roles.cache.has(plano.discord_role_id)) {
+          usuariosPorPlano[plano.name]++;
+          usuariosSemPlano--; // Subtrai do total de usuários sem plano
+          break; // Se encontrou um plano, não precisa verificar os outros
+        }
       }
     }
 
